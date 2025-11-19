@@ -2,76 +2,83 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Visualization 2 – Aid Flows by Purpose (Top Donors/Recipients, Top 5 Purposes)</title>
+  <title>Visualization 2 – Aid Relationships by Purpose</title>
   <style>
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       margin: 20px;
+      font-size: 13px;
     }
     .title {
-      font-size: 20px;
+      font-size: 18px;
       font-weight: 600;
-      margin-bottom: 4px;
+      margin-bottom: 6px;
     }
     .subtitle {
       color: #555;
-      margin-bottom: 16px;
-      max-width: 1000px;
+      margin-bottom: 12px;
+      max-width: 900px;
+      line-height: 1.3;
+    }
+    .subtitle-line {
+      margin-bottom: 2px;
     }
     svg {
       border: 1px solid #ddd;
       background: #fafafa;
     }
     .node-label {
-      font-size: 11px;
+      font-size: 12px;
       cursor: pointer;
       fill: #333;
     }
+    .node-label.highlight {
+      font-weight: 700;
+      fill: #000;
+    }
     .node-circle {
       cursor: pointer;
-      fill: #fff;
+      fill: #ffffff;
       stroke: #666;
+      stroke-width: 1.2px;
+    }
+    .node-circle.highlight {
+      stroke: #000;
+      stroke-width: 2px;
     }
     .link {
-      cursor: pointer;
       stroke-linecap: round;
-      stroke-opacity: 0.6;
+      cursor: pointer;
     }
-    .link.highlight {
-      stroke-opacity: 1;
+    .section-title {
+      margin-top: 22px;
+      margin-bottom: 6px;
+      font-weight: 600;
+      font-size: 14px;
     }
     .controls {
-      margin-top: 20px;
       margin-bottom: 8px;
+      font-size: 13px;
     }
     .controls label {
       margin-right: 10px;
-      font-size: 13px;
     }
     select {
-      padding: 4px;
+      padding: 3px 4px;
       font-size: 13px;
-    }
-    .section-title {
-      margin-top: 24px;
-      font-weight: 600;
-      margin-bottom: 4px;
-    }
-    .axis text {
-      font-size: 11px;
     }
     .tooltip {
       position: absolute;
       padding: 6px 8px;
       font-size: 11px;
-      background: rgba(0,0,0,0.75);
+      background: rgba(0,0,0,0.8);
       color: #fff;
       border-radius: 3px;
       pointer-events: none;
       opacity: 0;
       z-index: 10;
     }
-    .legend {
+    .legend text {
       font-size: 11px;
     }
     .legend rect {
@@ -80,13 +87,24 @@
   </style>
 </head>
 <body>
-  <div class="title">Visualization 2 – Aid Relationships by Purpose</div>
-  <div class="subtitle">
-    Top 20 donors and top 10 recipients, restricted to the top 5 purposes by total amount.
-    Edge width encodes total commitment; edge color gradient encodes the composition of purposes.
+  <div class="title">
+    Visualization 2 – Aid Relationships by Purpose
+    (Top 20 Donors → Top 10 Recipients, Top 5 Purposes)
   </div>
 
-  <!-- 主图：donor–recipient 网络 + 多用途渐变边 -->
+  <div class="subtitle">
+    <div class="subtitle-line">
+      Donors (left) are ranked by total outgoing aid; recipients (right) by total incoming aid.
+    </div>
+    <div class="subtitle-line">
+      Only the top 5 purposes of donation (by total amount) are shown. All nodes have the same size.
+    </div>
+    <div class="subtitle-line">
+      Edge thickness encodes total commitment amount. Edge color gradient encodes the composition of purposes.
+    </div>
+  </div>
+
+  <!-- Main view: donor–recipient network with multi-purpose edges -->
   <div id="mainChart"></div>
 
   <div class="section-title">Pair-level purpose composition (Donor–Recipient)</div>
@@ -119,607 +137,6 @@
   <div class="tooltip" id="tooltip"></div>
 
   <script src="https://d3js.org/d3.v7.min.js"></script>
-  <script>
-    const mainWidth = 1000;
-    const mainHeight = 600;
-    const mainMargin = { top: 50, right: 220, bottom: 40, left: 220 };
-    const innerWidth = mainWidth - mainMargin.left - mainMargin.right;
-    const innerHeight = mainHeight - mainMargin.top - mainMargin.bottom;
-
-    const donorX = 0;
-    const recipientX = innerWidth;
-
-    const svg = d3.select("#mainChart")
-      .append("svg")
-      .attr("width", mainWidth)
-      .attr("height", mainHeight);
-
-    const g = svg.append("g")
-      .attr("transform", `translate(${mainMargin.left},${mainMargin.top})`);
-
-    const defs = svg.append("defs");
-    const tooltip = d3.select("#tooltip");
-
-    // 背景矩形：主要用于接收鼠标事件区域（这里不做点击过滤）
-    const bgRect = g.insert("rect", ":first-child")
-      .attr("x", -40)
-      .attr("y", -40)
-      .attr("width", innerWidth + 80)
-      .attr("height", innerHeight + 80)
-      .attr("fill", "transparent")
-      .style("pointer-events", "all")
-      .on("mouseover", () => {
-        resetLinks();
-      });
-
-    // 副图尺寸
-    const pairPieWidth = 400, pairPieHeight = 300;
-    const countryPieWidth = 400, countryPieHeight = 300;
-
-    const pairPieSvg = d3.select("#pairPie")
-      .append("svg")
-      .attr("width", pairPieWidth)
-      .attr("height", pairPieHeight);
-
-    const countryPieSvg = d3.select("#countryPie")
-      .append("svg")
-      .attr("width", countryPieWidth)
-      .attr("height", countryPieHeight);
-
-    const pairPieG = pairPieSvg.append("g")
-      .attr("transform", `translate(${pairPieWidth/2},${pairPieHeight/2})`);
-
-    const countryPieG = countryPieSvg.append("g")
-      .attr("transform", `translate(${countryPieWidth/2},${countryPieHeight/2})`);
-
-    const pie = d3.pie()
-      .sort(null)
-      .value(d => d.value);
-
-    const arc = d3.arc()
-      .innerRadius(0)
-      .outerRadius(Math.min(pairPieWidth, pairPieHeight) / 2 - 40);
-
-    const arcCountry = d3.arc()
-      .innerRadius(0)
-      .outerRadius(Math.min(countryPieWidth, countryPieHeight) / 2 - 40);
-
-    const formatAmount = d3.format(",.0f");
-    const formatShort = d3.format(".2s");
-
-    // 下拉框 DOM
-    const pairDonorSelect = document.getElementById("pairDonorSelect");
-    const pairRecipientSelect = document.getElementById("pairRecipientSelect");
-    const countrySelect = document.getElementById("countrySelect");
-
-    // 全局数据结构
-    let donorsOrdered = [];
-    let recipientsOrdered = [];
-    let purposesOrdered = [];
-    let pairMap = new Map();        // key: "donor||recipient" -> {donor,recipient,total,purposes:[{purpose,value}]}
-    let edgesByPurpose = [];        // [{donor, recipient, purpose, value}]
-    let purposeColorScale;
-
-    d3.csv("aiddata-countries-only.csv").then(raw => {
-      // 清洗原始数据
-      const data = raw
-        .filter(d =>
-          d.donor && d.recipient &&
-          d.commitment_amount_usd_constant &&
-          d.coalesced_purpose_name
-        )
-        .map(d => ({
-          donor: d.donor,
-          recipient: d.recipient,
-          amount: +d.commitment_amount_usd_constant,
-          year: +d.year,
-          purpose: d.coalesced_purpose_name
-        }))
-        .filter(d => d.amount > 0);
-
-      // 先算 top 20 donors & top 10 recipients（总金额，不分 purpose）
-      let donorTotals = d3.rollups(
-        data,
-        v => d3.sum(v, d => d.amount),
-        d => d.donor
-      ).sort((a, b) => d3.descending(a[1], b[1]));
-
-      let recipientTotals = d3.rollups(
-        data,
-        v => d3.sum(v, d => d.amount),
-        d => d.recipient
-      ).sort((a, b) => d3.descending(a[1], b[1]));
-
-      donorsOrdered = donorTotals.slice(0, 20).map(d => d[0]);
-      recipientsOrdered = recipientTotals.slice(0, 10).map(d => d[0]);
-
-      const topDonorSet = new Set(donorsOrdered);
-      const topRecipientSet = new Set(recipientsOrdered);
-
-      // 限制到 top donors/recipients
-      let filtered = data.filter(d =>
-        topDonorSet.has(d.donor) && topRecipientSet.has(d.recipient)
-      );
-
-      // 在这个子集上找 top 5 purposes
-      let purposeTotals = d3.rollups(
-        filtered,
-        v => d3.sum(v, d => d.amount),
-        d => d.purpose
-      ).sort((a, b) => d3.descending(a[1], b[1]));
-
-      purposesOrdered = purposeTotals.slice(0, 5).map(d => d[0]);
-      const topPurposeSet = new Set(purposesOrdered);
-
-      // 只保留 top 5 purposes
-      filtered = filtered.filter(d => topPurposeSet.has(d.purpose));
-
-      // 在过滤后的数据上重新计算 donor / recipient totals（供排序）
-      donorTotals = d3.rollups(
-        filtered,
-        v => d3.sum(v, d => d.amount),
-        d => d.donor
-      ).sort((a, b) => d3.descending(a[1], b[1]));
-      recipientTotals = d3.rollups(
-        filtered,
-        v => d3.sum(v, d => d.amount),
-        d => d.recipient
-      ).sort((a, b) => d3.descending(a[1], b[1]));
-
-      donorsOrdered = donorTotals.map(d => d[0]);
-      recipientsOrdered = recipientTotals.map(d => d[0]);
-
-      // 将 donor-recipient-purpose 聚合
-      const roll = d3.rollups(
-        filtered,
-        v => d3.sum(v, d => d.amount),
-        d => d.donor,
-        d => d.recipient,
-        d => d.purpose
-      );
-
-      edgesByPurpose = [];
-      roll.forEach(([donor, recs]) => {
-        recs.forEach(([recipient, purposes]) => {
-          purposes.forEach(([purpose, value]) => {
-            edgesByPurpose.push({ donor, recipient, purpose, value });
-          });
-        });
-      });
-
-      // 构建 pairMap: 每对 donor-recipient 的总额 + 按 purpose 分布
-      pairMap = new Map();
-      edgesByPurpose.forEach(d => {
-        const key = d.donor + "||" + d.recipient;
-        if (!pairMap.has(key)) {
-          pairMap.set(key, {
-            donor: d.donor,
-            recipient: d.recipient,
-            total: 0,
-            purposes: []
-          });
-        }
-        const obj = pairMap.get(key);
-        obj.total += d.value;
-        obj.purposes.push({ purpose: d.purpose, value: d.value });
-      });
-
-      // 对每个 pair 的 purposes 再排序 & 合并（防止重复聚合）
-      pairMap.forEach(obj => {
-        const merged = d3.rollups(
-          obj.purposes,
-          v => d3.sum(v, d => d.value),
-          d => d.purpose
-        ).map(([purpose, value]) => ({ purpose, value }));
-        merged.sort((a, b) => d3.descending(a.value, b.value));
-        obj.purposes = merged;
-      });
-
-      // 用总额范围来定义线宽
-      const pairsArray = Array.from(pairMap.values());
-      const totalExtent = d3.extent(pairsArray, d => d.total);
-      const minT = totalExtent[0] || 0;
-      const maxT = totalExtent[1] || 1;
-
-      const widthScale = d3.scaleSqrt()
-        .domain([minT, maxT])
-        .range([1, 10]);
-
-      // 目的颜色尺度（固定 5 个 purpose）
-      purposeColorScale = d3.scaleOrdinal()
-        .domain(purposesOrdered)
-        .range(d3.schemeTableau10.slice(0, purposesOrdered.length));
-
-      // 画主图：节点位置
-      const donorScale = d3.scaleBand()
-        .domain(donorsOrdered)
-        .range([0, innerHeight])
-        .padding(0.2);
-
-      const recipientScale = d3.scaleBand()
-        .domain(recipientsOrdered)
-        .range([0, innerHeight])
-        .padding(0.2);
-
-      // donor 节点
-      const donorGroup = g.selectAll(".donor-node")
-        .data(donorsOrdered)
-        .enter()
-        .append("g")
-        .attr("class", "donor-node")
-        .attr("transform", d =>
-          `translate(${donorX},${donorScale(d) + donorScale.bandwidth()/2})`
-        );
-
-      donorGroup.append("circle")
-        .attr("class", "node-circle")
-        .attr("r", 5)
-        .on("mouseover", (event, d) => {
-          highlightCountry(d);
-        })
-        .on("mouseout", () => {
-          resetLinks();
-        })
-        .on("click", (event, d) => {
-          // 点击仍然用来更新国家饼图（作为 donor）
-          countrySelect.value = d;
-          document.querySelector("input[name='countryMode'][value='donor']").checked = true;
-          updateCountryPie(d, "donor");
-        });
-
-      donorGroup.append("text")
-        .attr("class", "node-label")
-        .attr("x", -10)
-        .attr("dy", "0.35em")
-        .attr("text-anchor", "end")
-        .text(d => d)
-        .on("mouseover", (event, d) => {
-          highlightCountry(d);
-        })
-        .on("mouseout", () => {
-          resetLinks();
-        })
-        .on("click", (event, d) => {
-          countrySelect.value = d;
-          document.querySelector("input[name='countryMode'][value='donor']").checked = true;
-          updateCountryPie(d, "donor");
-        });
-
-      // recipient 节点
-      const recipientGroup = g.selectAll(".recipient-node")
-        .data(recipientsOrdered)
-        .enter()
-        .append("g")
-        .attr("class", "recipient-node")
-        .attr("transform", d =>
-          `translate(${recipientX},${recipientScale(d) + recipientScale.bandwidth()/2})`
-        );
-
-      recipientGroup.append("circle")
-        .attr("class", "node-circle")
-        .attr("r", 5)
-        .on("mouseover", (event, d) => {
-          highlightCountry(d);
-        })
-        .on("mouseout", () => {
-          resetLinks();
-        })
-        .on("click", (event, d) => {
-          countrySelect.value = d;
-          document.querySelector("input[name='countryMode'][value='recipient']").checked = true;
-          updateCountryPie(d, "recipient");
-        });
-
-      recipientGroup.append("text")
-        .attr("class", "node-label")
-        .attr("x", 10)
-        .attr("dy", "0.35em")
-        .attr("text-anchor", "start")
-        .text(d => d)
-        .on("mouseover", (event, d) => {
-          highlightCountry(d);
-        })
-        .on("mouseout", () => {
-          resetLinks();
-        })
-        .on("click", (event, d) => {
-          countrySelect.value = d;
-          document.querySelector("input[name='countryMode'][value='recipient']").checked = true;
-          updateCountryPie(d, "recipient");
-        });
-
-      // 为每条 pair 创建对应的渐变，并画线
-      pairsArray.forEach(pair => {
-        const y1 = donorScale(pair.donor) + donorScale.bandwidth()/2;
-        const y2 = recipientScale(pair.recipient) + recipientScale.bandwidth()/2;
-        const x1 = donorX + 5;
-        const x2 = recipientX - 5;
-
-        const gradId = `grad-${pair.donor.replace(/\s+/g,"_")}-${pair.recipient.replace(/\s+/g,"_")}`;
-        const lg = defs.append("linearGradient")
-          .attr("id", gradId)
-          .attr("gradientUnits", "userSpaceOnUse")
-          .attr("x1", mainMargin.left + x1)
-          .attr("y1", mainMargin.top + y1)
-          .attr("x2", mainMargin.left + x2)
-          .attr("y2", mainMargin.top + y2);
-
-        const total = pair.total;
-        let offset = 0;
-        pair.purposes.forEach(p => {
-          const frac = p.value / total;
-          const next = offset + frac;
-          const color = purposeColorScale(p.purpose);
-          lg.append("stop")
-            .attr("offset", (offset * 100) + "%")
-            .attr("stop-color", color);
-          lg.append("stop")
-            .attr("offset", (next * 100) + "%")
-            .attr("stop-color", color);
-          offset = next;
-        });
-
-        g.append("line")
-          .datum(pair)
-          .attr("class", "link")
-          .attr("x1", x1)
-          .attr("y1", y1)
-          .attr("x2", x2)
-          .attr("y2", y2)
-          .attr("stroke", `url(#${gradId})`)
-          .attr("stroke-width", widthScale(pair.total))
-          .on("mouseover", (event, d) => {
-            // hover 边：只显示这条边
-            highlightPair(d.donor, d.recipient);
-
-            // tooltip 显示总额和用途分布
-            const lines = [
-              `Donor: ${d.donor}`,
-              `Recipient: ${d.recipient}`,
-              `Total: $${formatAmount(d.total)}`
-            ];
-            d.purposes.forEach(p => {
-              const pct = ((p.value / d.total) * 100).toFixed(1);
-              lines.push(`${p.purpose}: $${formatAmount(p.value)} (${pct}%)`);
-            });
-            tooltip
-              .style("opacity", 1)
-              .html(lines.join("<br>"))
-              .style("left", (event.pageX + 12) + "px")
-              .style("top", (event.pageY - 28) + "px");
-          })
-          .on("mousemove", (event) => {
-            tooltip
-              .style("left", (event.pageX + 12) + "px")
-              .style("top", (event.pageY - 28) + "px");
-          })
-          .on("mouseout", () => {
-            tooltip.style("opacity", 0);
-            resetLinks();
-          })
-          .on("click", (event, d) => {
-            // 点击边时，更新 pair 下拉 + pair 饼图（不再负责过滤）
-            pairDonorSelect.value = d.donor;
-            pairRecipientSelect.value = d.recipient;
-            updatePairPie(d.donor, d.recipient);
-          });
-      });
-
-      // 画 main legend：purpose -> color
-      const legend = svg.append("g")
-        .attr("class", "legend")
-        .attr("transform", `translate(${mainWidth - mainMargin.right + 20}, ${mainMargin.top})`);
-
-      legend.append("text")
-        .text("Top 5 purposes")
-        .attr("font-weight", "600")
-        .attr("y", 0);
-
-      purposesOrdered.forEach((p, i) => {
-        const gL = legend.append("g")
-          .attr("transform", `translate(0, ${20 + i*18})`);
-        gL.append("rect")
-          .attr("width", 12)
-          .attr("height", 12)
-          .attr("fill", purposeColorScale(p));
-        gL.append("text")
-          .attr("x", 18)
-          .attr("y", 10)
-          .text(p);
-      });
-
-      // 初始化下拉框选项
-      donorsOrdered.forEach(d => {
-        const opt = document.createElement("option");
-        opt.value = d; opt.textContent = d;
-        pairDonorSelect.appendChild(opt);
-      });
-      recipientsOrdered.forEach(r => {
-        const opt = document.createElement("option");
-        opt.value = r; opt.textContent = r;
-        pairRecipientSelect.appendChild(opt);
-      });
-
-      const allCountries = Array.from(new Set([...donorsOrdered, ...recipientsOrdered]));
-      allCountries.forEach(c => {
-        const opt = document.createElement("option");
-        opt.value = c; opt.textContent = c;
-        countrySelect.appendChild(opt);
-      });
-
-      // 绑定事件（下拉 + radio）
-      pairDonorSelect.addEventListener("change", () => {
-        updatePairPie(pairDonorSelect.value, pairRecipientSelect.value);
-      });
-      pairRecipientSelect.addEventListener("change", () => {
-        updatePairPie(pairDonorSelect.value, pairRecipientSelect.value);
-      });
-
-      document.querySelectorAll("input[name='countryMode']").forEach(radio => {
-        radio.addEventListener("change", () => {
-          updateCountryPie(countrySelect.value, getCountryMode());
-        });
-      });
-      countrySelect.addEventListener("change", () => {
-        updateCountryPie(countrySelect.value, getCountryMode());
-      });
-
-      function getCountryMode() {
-        return document.querySelector("input[name='countryMode']:checked").value;
-      }
-
-      // 默认选第一个 donor + recipient
-      if (donorsOrdered.length && recipientsOrdered.length) {
-        pairDonorSelect.value = donorsOrdered[0];
-        pairRecipientSelect.value = recipientsOrdered[0];
-        updatePairPie(donorsOrdered[0], recipientsOrdered[0]);
-      }
-      if (allCountries.length) {
-        countrySelect.value = allCountries[0];
-        updateCountryPie(allCountries[0], getCountryMode());
-      }
-
-      // === 高亮/恢复函数 ===
-      function resetLinks() {
-        g.selectAll(".link")
-          .style("display", null)
-          .style("stroke-opacity", 0.6);
-      }
-
-      function highlightCountry(country) {
-        g.selectAll(".link")
-          .style("display", d =>
-            (d.donor === country || d.recipient === country) ? null : "none"
-          )
-          .style("stroke-opacity", d =>
-            (d.donor === country || d.recipient === country) ? 1 : 0.1
-          );
-      }
-
-      function highlightPair(donor, recipient) {
-        g.selectAll(".link")
-          .style("display", d =>
-            (d.donor === donor && d.recipient === recipient) ? null : "none"
-          )
-          .style("stroke-opacity", d =>
-            (d.donor === donor && d.recipient === recipient) ? 1 : 0.1
-          );
-      }
-
-      // 副图 1：Donor–Recipient pair 饼图
-      function updatePairPie(donor, recipient) {
-        pairPieG.selectAll("*").remove();
-
-        const key = donor + "||" + recipient;
-        const pair = pairMap.get(key);
-        if (!pair || !pair.purposes.length) {
-          pairPieG.append("text")
-            .attr("text-anchor", "middle")
-            .attr("dy", 0)
-            .text("No data for this donor–recipient pair (within top-5 purposes).");
-          return;
-        }
-
-        const arcs = pie(pair.purposes);
-
-        pairPieG.selectAll("path")
-          .data(arcs)
-          .enter()
-          .append("path")
-          .attr("d", arc)
-          .attr("fill", d => purposeColorScale(d.data.purpose))
-          .on("mouseover", (event, d) => {
-            const pct = ((d.data.value / pair.total) * 100).toFixed(1);
-            tooltip
-              .style("opacity", 1)
-              .html(
-                `Donor: ${pair.donor}<br>` +
-                `Recipient: ${pair.recipient}<br>` +
-                `${d.data.purpose}<br>` +
-                `Amount: $${formatAmount(d.data.value)} (${pct}%)`
-              )
-              .style("left", (event.pageX + 12) + "px")
-              .style("top", (event.pageY - 28) + "px");
-          })
-          .on("mousemove", (event) => {
-            tooltip
-              .style("left", (event.pageX + 12) + "px")
-              .style("top", (event.pageY - 28) + "px");
-          })
-          .on("mouseout", () => {
-            tooltip.style("opacity", 0);
-          });
-
-        pairPieG.append("text")
-          .attr("text-anchor", "middle")
-          .attr("dy", - (Math.min(pairPieWidth, pairPieHeight)/2 - 10))
-          .text(`${donor} → ${recipient}`);
-      }
-
-      // 副图 2：单国家 outgoing / incoming 饼图
-      function updateCountryPie(country, mode) {
-        countryPieG.selectAll("*").remove();
-
-        let rows;
-        if (mode === "donor") {
-          rows = edgesByPurpose.filter(d => d.donor === country);
-        } else {
-          rows = edgesByPurpose.filter(d => d.recipient === country);
-        }
-        if (!rows.length) {
-          countryPieG.append("text")
-            .attr("text-anchor", "middle")
-            .attr("dy", 0)
-            .text(`No ${mode === "donor" ? "outgoing" : "incoming"} flows (within top-5 purposes).`);
-          return;
-        }
-
-        const agg = d3.rollups(
-          rows,
-          v => d3.sum(v, d => d.value),
-          d => d.purpose
-        ).map(([purpose, value]) => ({ purpose, value }));
-        agg.sort((a, b) => d3.descending(a.value, b.value));
-        const total = d3.sum(agg, d => d.value);
-
-        const arcs = pie(agg);
-
-        countryPieG.selectAll("path")
-          .data(arcs)
-          .enter()
-          .append("path")
-          .attr("d", arcCountry)
-          .attr("fill", d => purposeColorScale(d.data.purpose))
-          .on("mouseover", (event, d) => {
-            const pct = ((d.data.value / total) * 100).toFixed(1);
-            tooltip
-              .style("opacity", 1)
-              .html(
-                `${country} as ${mode === "donor" ? "donor" : "recipient"}<br>` +
-                `${d.data.purpose}<br>` +
-                `Amount: $${formatAmount(d.data.value)} (${pct}%)`
-              )
-              .style("left", (event.pageX + 12) + "px")
-              .style("top", (event.pageY - 28) + "px");
-          })
-          .on("mousemove", (event) => {
-            tooltip
-              .style("left", (event.pageX + 12) + "px")
-              .style("top", (event.pageY - 28) + "px");
-          })
-          .on("mouseout", () => {
-            tooltip.style("opacity", 0);
-          });
-
-        countryPieG.append("text")
-          .attr("text-anchor", "middle")
-          .attr("dy", - (Math.min(countryPieWidth, countryPieHeight)/2 - 10))
-          .text(`${country} – ${mode === "donor" ? "outgoing" : "incoming"}`);
-      }
-    }).catch(err => {
-      console.error("Error loading CSV:", err);
-      alert("Error loading aiddata-countries-only.csv. Make sure the file is in the same folder and served over HTTP (not file://).");
-    });
-  </script>
+  <script src="vis2.js"></script>
 </body>
 </html>
