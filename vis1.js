@@ -36,13 +36,13 @@ const detailSvg = d3.select("#detail")
 const formatAmount = d3.format(",.0f");
 const formatShort  = d3.format(".2s");
 
-const BASE_OPACITY = 0.75; // 默认所有边的透明度
-const HILITE_OPACITY = 0.98;
+const BASE_OPACITY   = 0.75; // 默认所有边的透明度
+const HILITE_OPACITY = 0.98; // 选中后边的透明度
+
+// 当前选中状态：{ name, role: "donor" | "recipient" } 或 null
+let selected = null;
 
 d3.csv("aiddata-countries-only.csv").then(raw => {
-  // 当前选中的国家（点击后锁定）
-  let selectedCountry = null;
-
   const data = raw
     .filter(d => d.donor && d.recipient && d.commitment_amount_usd_constant)
     .map(d => ({
@@ -53,7 +53,7 @@ d3.csv("aiddata-countries-only.csv").then(raw => {
     }))
     .filter(d => d.amount > 0);
 
-  // 1. donor & recipient 全时期总额，用于排名（节点大小统一，就不再 encode size）
+  // 1. donor & recipient 全时期总额，用于排名
   let donorTotalsFull = d3.rollups(
     data,
     v => d3.sum(v, d => d.amount),
@@ -91,16 +91,7 @@ d3.csv("aiddata-countries-only.csv").then(raw => {
     recs.map(([recipient, value]) => ({ donor, recipient, value }))
   );
 
-  // 5. 邻居 map：用于“只留选中节点和其邻居”
-  const neighborMap = new Map();
-  edges.forEach(e => {
-    if (!neighborMap.has(e.donor)) neighborMap.set(e.donor, new Set());
-    if (!neighborMap.has(e.recipient)) neighborMap.set(e.recipient, new Set());
-    neighborMap.get(e.donor).add(e.recipient);
-    neighborMap.get(e.recipient).add(e.donor);
-  });
-
-  // 6. 位置尺度
+  // 5. 位置尺度
   const donorScale = d3.scaleBand()
     .domain(donorNodes)
     .range([0, innerHeight])
@@ -111,7 +102,7 @@ d3.csv("aiddata-countries-only.csv").then(raw => {
     .range([0, innerHeight])
     .padding(0.2);
 
-  // 7. 线宽和颜色 —— 使用分位数 + clamp，small 颜色也不太淡
+  // 6. 线宽和颜色 —— 分位数 + clamp，small 也不会太淡
   const amounts = edges.map(d => d.value);
   const amountsSorted = amounts.slice().sort(d3.ascending);
 
@@ -147,7 +138,7 @@ d3.csv("aiddata-countries-only.csv").then(raw => {
     return d3.interpolateBlues(t);
   }
 
-  // 8. 统一节点半径（不 encode 金额）
+  // 7. 统一节点半径（不 encode 金额）
   const NODE_RADIUS = 7;
 
   const donorNodeInfo = new Map();
@@ -161,6 +152,10 @@ d3.csv("aiddata-countries-only.csv").then(raw => {
     const cy = recipientScale(name) + recipientScale.bandwidth() / 2;
     recipientNodeInfo.set(name, { x: recipientX, y: cy, r: NODE_RADIUS });
   });
+
+  // 8. 辅助：donor/recipient 节点 data 对象（带 role）
+  const donorData     = donorNodes.map(name => ({ name, role: "donor" }));
+  const recipientData = recipientNodes.map(name => ({ name, role: "recipient" }));
 
   // 9. 画边（底层）
   const links = linkLayer.selectAll(".link")
@@ -201,20 +196,21 @@ d3.csv("aiddata-countries-only.csv").then(raw => {
       tooltip.style("opacity", 0);
     })
     .on("click", (event, d) => {
-      const selected = selectCountry(d.donor);
-      if (selected) {
+      // 点击边：按 donor 视角选中
+      const ok = selectCountry(d.donor, "donor");
+      if (ok) {
         showDetail(d.donor, "donor");
       }
     });
 
   // 10. 画节点（上层）：donor 左侧
   const donorGroup = nodeLayer.selectAll(".donor-node")
-    .data(donorNodes)
+    .data(donorData)
     .enter()
     .append("g")
     .attr("class", "node-group donor-node")
     .attr("transform", d => {
-      const info = donorNodeInfo.get(d);
+      const info = donorNodeInfo.get(d.name);
       return `translate(${info.x}, ${info.y})`;
     });
 
@@ -222,33 +218,33 @@ d3.csv("aiddata-countries-only.csv").then(raw => {
     .attr("class", "node-circle")
     .attr("r", NODE_RADIUS)
     .on("click", (event, d) => {
-      const selected = selectCountry(d);
-      if (selected) {
-        showDetail(d, "donor");
+      const ok = selectCountry(d.name, "donor");
+      if (ok) {
+        showDetail(d.name, "donor");
       }
     });
 
   donorGroup.append("text")
     .attr("class", "node-label")
-    .attr("x", -10)
+    .attr("x", -110)                // 往左移一点
     .attr("dy", "0.35em")
-    .attr("text-anchor", "end")
-    .text(d => `#${donorNodes.indexOf(d) + 1} ${d}`)
+    .attr("text-anchor", "start")   // 左对齐
+    .text(d => `#${donorNodes.indexOf(d.name) + 1} ${d.name}`)
     .on("click", (event, d) => {
-      const selected = selectCountry(d);
-      if (selected) {
-        showDetail(d, "donor");
+      const ok = selectCountry(d.name, "donor");
+      if (ok) {
+        showDetail(d.name, "donor");
       }
     });
 
   // recipient 右侧
   const recipientGroup = nodeLayer.selectAll(".recipient-node")
-    .data(recipientNodes)
+    .data(recipientData)
     .enter()
     .append("g")
     .attr("class", "node-group recipient-node")
     .attr("transform", d => {
-      const info = recipientNodeInfo.get(d);
+      const info = recipientNodeInfo.get(d.name);
       return `translate(${info.x}, ${info.y})`;
     });
 
@@ -256,9 +252,9 @@ d3.csv("aiddata-countries-only.csv").then(raw => {
     .attr("class", "node-circle")
     .attr("r", NODE_RADIUS)
     .on("click", (event, d) => {
-      const selected = selectCountry(d);
-      if (selected) {
-        showDetail(d, "recipient");
+      const ok = selectCountry(d.name, "recipient");
+      if (ok) {
+        showDetail(d.name, "recipient");
       }
     });
 
@@ -267,18 +263,21 @@ d3.csv("aiddata-countries-only.csv").then(raw => {
     .attr("x", 10)
     .attr("dy", "0.35em")
     .attr("text-anchor", "start")
-    .text(d => `#${recipientNodes.indexOf(d) + 1} ${d}`)
+    .text(d => `#${recipientNodes.indexOf(d.name) + 1} ${d.name}`)
     .on("click", (event, d) => {
-      const selected = selectCountry(d);
-      if (selected) {
-        showDetail(d, "recipient");
+      const ok = selectCountry(d.name, "recipient");
+      if (ok) {
+        showDetail(d.name, "recipient");
       }
     });
 
-  // 11. 边的 legend（small/medium/large）
+  // 全部节点组（用于统一控制）
+  const nodeGroups = nodeLayer.selectAll(".node-group");
+
+  // 11. 边的 legend（small/medium/large），整体右移一点
   const legend = svg.append("g")
     .attr("class", "legend")
-    .attr("transform", `translate(${mainWidth - mainMargin.right + 40}, ${mainMargin.top})`);
+    .attr("transform", `translate(${mainWidth - mainMargin.right + 80}, ${mainMargin.top})`);
 
   legend.append("text")
     .attr("font-weight", 600)
@@ -308,28 +307,26 @@ d3.csv("aiddata-countries-only.csv").then(raw => {
 
   // === 选中 / 高亮逻辑 ===
 
-  const nodeGroups = nodeLayer.selectAll(".node-group");
-
   // 点击国家：选中 / 取消选中；返回 true 表示选中，false 表示取消
-  function selectCountry(country) {
-    if (selectedCountry === country) {
-      // 取消选中，恢复 overview
-      selectedCountry = null;
+  function selectCountry(name, role) {
+    if (selected && selected.name === name && selected.role === role) {
+      // 再点一次同一个：取消选中，恢复 overview
+      selected = null;
       updateSelection();
       detailSvg.selectAll("*").remove();
       d3.select("#detailTitle").text("Click a donor or recipient to see its detailed flows.");
       return false;
     } else {
-      selectedCountry = country;
+      selected = { name, role };
       updateSelection();
       return true;
     }
   }
 
-  // 根据 selectedCountry 更新：隐藏/显示边和节点
+  // 根据 selected 更新：隐藏/显示边，节点始终保留
   function updateSelection() {
-    if (!selectedCountry) {
-      // 没选中任何国家：显示全部
+    if (!selected) {
+      // overview：显示所有边和节点
       links
         .style("display", null)
         .style("stroke-opacity", BASE_OPACITY);
@@ -337,30 +334,52 @@ d3.csv("aiddata-countries-only.csv").then(raw => {
       nodeGroups
         .style("display", null);
 
-      svg.selectAll(".node-label").classed("highlight", false);
-      svg.selectAll(".node-circle").classed("highlight", false);
+      nodeGroups.selectAll(".node-label").classed("highlight", false);
+      nodeGroups.selectAll(".node-circle").classed("highlight", false);
       return;
     }
 
-    const neighbors = neighborMap.get(selectedCountry) || new Set();
+    const { name, role } = selected;
 
-    // 只显示与 selectedCountry 相连的边
+    // 计算邻居（只在另一侧高亮）
+    const neighbors = new Set();
+    edges.forEach(e => {
+      if (role === "donor" && e.donor === name) {
+        neighbors.add(e.recipient);
+      } else if (role === "recipient" && e.recipient === name) {
+        neighbors.add(e.donor);
+      }
+    });
+
+    // 只显示该角色下的边：donor 视角 / recipient 视角
     links
-      .style("display", d => (d.donor === selectedCountry || d.recipient === selectedCountry) ? null : "none")
+      .style("display", d => {
+        if (role === "donor") {
+          return d.donor === name ? null : "none";
+        } else {
+          return d.recipient === name ? null : "none";
+        }
+      })
       .style("stroke-opacity", HILITE_OPACITY);
 
-    // 只显示 selectedCountry 以及和它相连的国家节点
+    // 节点全部保留，只是高亮当前和邻居
     nodeGroups
-      .style("display", d =>
-        d === selectedCountry || neighbors.has(d) ? null : "none"
-      );
+      .style("display", null);
 
-    // 高亮 selectedCountry + 邻居的 label/circle
-    svg.selectAll(".node-label")
-      .classed("highlight", d => d === selectedCountry || neighbors.has(d));
+    nodeGroups.selectAll(".node-label")
+      .classed("highlight", d => {
+        if (d.name === name && d.role === role) return true;   // 当前节点
+        // 高亮另一侧的邻居
+        if (d.role !== role && neighbors.has(d.name)) return true;
+        return false;
+      });
 
-    svg.selectAll(".node-circle")
-      .classed("highlight", d => d === selectedCountry || neighbors.has(d));
+    nodeGroups.selectAll(".node-circle")
+      .classed("highlight", d => {
+        if (d.name === name && d.role === role) return true;
+        if (d.role !== role && neighbors.has(d.name)) return true;
+        return false;
+      });
   }
 
   // 初始：overview 状态
