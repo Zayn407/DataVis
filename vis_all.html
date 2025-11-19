@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Aid Visualization – Combined View</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f5f5f5;
+    }
+
+    .header {
+      padding: 16px 20px 8px 20px;
+      border-bottom: 1px solid #ddd;
+      background: #ffffff;
+    }
+
+    .title {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      color: #555;
+      font-size: 13px;
+      max-width: 1000px;
+    }
+
+    .frame-container {
+      padding: 10px 20px 60px 20px; /* 底部预留空间给左下角按钮 */
+    }
+
+    iframe {
+      width: 100%;
+      height: 720px; /* 够放下你之前 1000x600 的图 */
+      border: 1px solid #ddd;
+      background: #fafafa;
+      box-sizing: border-box;
+      border-radius: 4px;
+    }
+
+    .switcher {
+      position: fixed;
+      left: 20px;
+      bottom: 20px;
+      background: rgba(255, 255, 255, 0.95);
+      border: 1px solid #ddd;
+      border-radius: 999px;
+      padding: 6px 10px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      z-index: 999;
+      font-size: 13px;
+    }
+
+    .switcher-label {
+      margin-right: 4px;
+      color: #666;
+    }
+
+    .switch-btn {
+      border: none;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      cursor: pointer;
+      background: #f0f0f0;
+      color: #333;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+
+    .switch-btn:hover {
+      background: #e0e0e0;
+    }
+
+    .switch-btn.active {
+      background: #4C78A8;
+      color: #fff;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">Aid Visualizations – Combined Interface</div>
+    <div class="subtitle">
+      Use the buttons in the lower-left corner to switch between:
+      (1) Overview of aid flows, (2) Aid by purposes, and (3) Time-varying patterns.
+    </div>
+  </div>
+
+  <div class="frame-container">
+    <!-- 这里通过 iframe 加载你原来的 vis1/vis2/vis3.html -->
+    <iframe id="visFrame" src="vis1.html" title="Aid Visualization"></iframe>
+  </div>
+
+  <!-- 左下角切换按钮 -->
+  <div class="switcher">
+    <span class="switcher-label">View:</span>
+    <button class="switch-btn active" data-target="vis1.html">
+      Vis 1 – Overview
+    </button>
+    <button class="switch-btn" data-target="vis2.html">
+      Vis 2 – Purposes
+    </button>
+    <button class="switch-btn" data-target="vis3.html">
+      Vis 3 – Time
+    </button>
+  </div>
+
+  <script>
+    const frame = document.getElementById('visFrame');
+    const buttons = document.querySelectorAll('.switch-btn');
+
+    buttons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = btn.getAttribute('data-target');
+        // 切换 iframe 加载的页面
+        frame.src = target;
+
+        // 更新按钮高亮状态
+        buttons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    });
+  </script>
+</body>
+</html>

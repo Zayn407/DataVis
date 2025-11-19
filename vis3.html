@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Visualization 3 – Time-varying Aid Flows</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 20px;
+    }
+    .title {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .subtitle {
+      color: #555;
+      margin-bottom: 16px;
+      max-width: 1000px;
+    }
+    .controls {
+      margin-bottom: 10px;
+      font-size: 13px;
+    }
+    .controls label {
+      margin-right: 10px;
+    }
+    input[type="range"] {
+      width: 300px;
+      vertical-align: middle;
+    }
+    svg {
+      border: 1px solid #ddd;
+      background: #fafafa;
+    }
+    .node-label {
+      font-size: 11px;
+      cursor: pointer;
+      fill: #333;
+    }
+    .node-circle {
+      cursor: pointer;
+      fill: #fff;
+      stroke: #666;
+    }
+    .link {
+      stroke: #4C78A8;
+      stroke-linecap: round;
+      stroke-opacity: 0.6;
+      cursor: pointer;
+    }
+    .link.highlight {
+      stroke-opacity: 1;
+    }
+    .axis text {
+      font-size: 11px;
+    }
+    .axis path, .axis line {
+      stroke: #aaa;
+    }
+    .tooltip {
+      position: absolute;
+      padding: 6px 8px;
+      font-size: 11px;
+      background: rgba(0,0,0,0.75);
+      color: #fff;
+      border-radius: 3px;
+      pointer-events: none;
+      opacity: 0;
+      z-index: 10;
+    }
+    .section-title {
+      margin-top: 24px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="title">Visualization 3 – Time-varying Aid Flows</div>
+  <div class="subtitle">
+    Top 20 donors and top 10 recipients. The main view shows who donates to whom and how much in the selected year.
+    The time-series view below can be driven by clicking nodes/edges or by selecting countries from the dropdowns.
+  </div>
+
+  <div class="controls">
+    <label>Year:
+      <span id="yearLabel"></span>
+    </label>
+    <input type="range" id="yearSlider" min="0" max="0" step="1">
+    <button id="playButton">Play</button>
+  </div>
+
+  <div id="mainChart"></div>
+
+  <div class="section-title" id="detailTitle">
+    Time series detail (click a node/edge or use the dropdowns).
+  </div>
+
+  <!-- 控制时间序列折线图的下拉框 -->
+  <div class="controls">
+    <div>
+      <strong>Pair (donor → recipient):</strong>
+      <label>Donor:
+        <select id="pairDonorSelect"></select>
+      </label>
+      <label>Recipient:
+        <select id="pairRecipientSelect"></select>
+      </label>
+    </div>
+    <div style="margin-top:4px;">
+      <strong>Country totals:</strong>
+      <label>Country:
+        <select id="countrySelect"></select>
+      </label>
+      <label>
+        <input type="radio" name="countryMode" value="donor" checked>
+        As donor (outgoing)
+      </label>
+      <label>
+        <input type="radio" name="countryMode" value="recipient">
+        As recipient (incoming)
+      </label>
+    </div>
+  </div>
+
+  <div id="detailChart"></div>
+
+  <div class="tooltip" id="tooltip"></div>
+
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script>
+    const mainWidth = 1000;
+    const mainHeight = 600;
+    const mainMargin = { top: 40, right: 200, bottom: 40, left: 200 };
+    const innerWidth = mainWidth - mainMargin.left - mainMargin.right;
+    const innerHeight = mainHeight - mainMargin.top - mainMargin.bottom;
+    const donorX = 0;
+    const recipientX = innerWidth;
+
+    const svg = d3.select("#mainChart")
+      .append("svg")
+      .attr("width", mainWidth)
+      .attr("height", mainHeight);
+
+    const g = svg.append("g")
+      .attr("transform", `translate(${mainMargin.left},${mainMargin.top})`);
+
+    const linksGroup = g.append("g").attr("class", "links");
+
+    const tooltip = d3.select("#tooltip");
+
+    const detailWidth = 900;
+    const detailHeight = 320;
+    const detailMargin = { top: 30, right: 20, bottom: 50, left: 70 };
+    const detailInnerWidth = detailWidth - detailMargin.left - detailMargin.right;
+    const detailInnerHeight = detailHeight - detailMargin.top - detailMargin.bottom;
+
+    const detailSvg = d3.select("#detailChart")
+      .append("svg")
+      .attr("width", detailWidth)
+      .attr("height", detailHeight);
+
+    const detailG = detailSvg.append("g")
+      .attr("transform", `translate(${detailMargin.left},${detailMargin.top})`);
+
+    const yearSlider = document.getElementById("yearSlider");
+    const yearLabel = document.getElementById("yearLabel");
+    const playButton = document.getElementById("playButton");
+    const detailTitle = document.getElementById("detailTitle");
+
+    const pairDonorSelect = document.getElementById("pairDonorSelect");
+    const pairRecipientSelect = document.getElementById("pairRecipientSelect");
+    const countrySelect = document.getElementById("countrySelect");
+
+    let isPlaying = false;
+    let playTimer = null;
+
+    let donorsOrdered = [];
+    let recipientsOrdered = [];
+    let donorScale, recipientScale;
+
+    let years = [];
+    let edgesByYear = new Map();        // year -> [{year, donor, recipient, value}]
+    let pairSeriesMap = new Map();      // "donor||recipient" -> {donor, recipient, series:[{year,value}]}
+    let donorYearTotals = new Map();    // donor -> [{year,value}]
+    let recipientYearTotals = new Map();// recipient -> [{year,value}]
+
+    let widthScale;                     // edge width (global over all years)
+
+    const formatAmount = d3.format(",.0f");
+
+    function getCountryMode() {
+      return document.querySelector("input[name='countryMode']:checked").value;
+    }
+
+    d3.csv("aiddata-countries-only.csv").then(raw => {
+      // 清洗数据
+      const data = raw
+        .filter(d => d.donor && d.recipient && d.commitment_amount_usd_constant && d.year)
+        .map(d => ({
+          donor: d.donor,
+          recipient: d.recipient,
+          year: +d.year,
+          amount: +d.commitment_amount_usd_constant
+        }))
+        .filter(d => d.amount > 0 && !isNaN(d.year));
+
+      // 所有年份
+      years = Array.from(new Set(data.map(d => d.year))).sort(d3.ascending);
+
+      // 全时期 top20 donors / top10 recipients
+      let donorTotals = d3.rollups(
+        data,
+        v => d3.sum(v, d => d.amount),
+        d => d.donor
+      ).sort((a, b) => d3.descending(a[1], b[1]));
+      let recipientTotals = d3.rollups(
+        data,
+        v => d3.sum(v, d => d.amount),
+        d => d.recipient
+      ).sort((a, b) => d3.descending(a[1], b[1]));
+
+      donorsOrdered = donorTotals.slice(0, 20).map(d => d[0]);
+      recipientsOrdered = recipientTotals.slice(0, 10).map(d => d[0]);
+
+      const donorSet = new Set(donorsOrdered);
+      const recipientSet = new Set(recipientsOrdered);
+
+      // 限制到 top donors/recipients
+      const filtered = data.filter(d => donorSet.has(d.donor) && recipientSet.has(d.recipient));
+
+      // 为每个年份构建 edgesByYear
+      years.forEach(y => edgesByYear.set(y, []));
+      const rollYear = d3.rollups(
+        filtered,
+        v => d3.sum(v, d => d.amount),
+        d => d.year,
+        d => d.donor,
+        d => d.recipient
+      );
+      rollYear.forEach(([year, donors]) => {
+        donors.forEach(([donor, recs]) => {
+          recs.forEach(([recipient, value]) => {
+            edgesByYear.get(year).push({ year, donor, recipient, value });
+          });
+        });
+      });
+
+      // pairSeriesMap: 每个 donor-recipient 的时间序列
+      pairSeriesMap = new Map();
+      years.forEach(year => {
+        const edges = edgesByYear.get(year) || [];
+        edges.forEach(e => {
+          const key = e.donor + "||" + e.recipient;
+          if (!pairSeriesMap.has(key)) {
+            pairSeriesMap.set(key, {
+              donor: e.donor,
+              recipient: e.recipient,
+              series: []
+            });
+          }
+          pairSeriesMap.get(key).series.push({ year, value: e.value });
+        });
+      });
+
+      // 填充缺失年份为 0
+      pairSeriesMap.forEach(obj => {
+        const mapYear = new Map(obj.series.map(d => [d.year, d.value]));
+        const fullSeries = years.map(y => ({
+          year: y,
+          value: mapYear.get(y) || 0
+        }));
+        obj.series = fullSeries;
+      });
+
+      // donorYearTotals / recipientYearTotals
+      const rollDonorYear = d3.rollups(
+        filtered,
+        v => d3.sum(v, d => d.amount),
+        d => d.donor,
+        d => d.year
+      );
+      rollDonorYear.forEach(([donor, yearList]) => {
+        const mapYear = new Map(yearList);
+        donorYearTotals.set(donor, years.map(y => ({
+          year: y,
+          value: mapYear.get(y) || 0
+        })));
+      });
+
+      const rollRecipientYear = d3.rollups(
+        filtered,
+        v => d3.sum(v, d => d.amount),
+        d => d.recipient,
+        d => d.year
+      );
+      rollRecipientYear.forEach(([recipient, yearList]) => {
+        const mapYear = new Map(yearList);
+        recipientYearTotals.set(recipient, years.map(y => ({
+          year: y,
+          value: mapYear.get(y) || 0
+        })));
+      });
+
+      // 全局 edge width scale
+      const allEdges = [];
+      edgesByYear.forEach(v => allEdges.push(...v));
+      const totalExtent = d3.extent(allEdges, d => d.value);
+      const minVal = totalExtent[0] || 0;
+      const maxVal = totalExtent[1] || 1;
+      widthScale = d3.scaleSqrt()
+        .domain([minVal, maxVal])
+        .range([0.5, 8]);
+
+      // 节点位置尺度
+      donorScale = d3.scaleBand()
+        .domain(donorsOrdered)
+        .range([0, innerHeight])
+        .padding(0.2);
+
+      recipientScale = d3.scaleBand()
+        .domain(recipientsOrdered)
+        .range([0, innerHeight])
+        .padding(0.2);
+
+      // 画节点
+      const donorNodes = g.selectAll(".donor-node")
+        .data(donorsOrdered)
+        .enter()
+        .append("g")
+        .attr("class", "donor-node")
+        .attr("transform", d =>
+          `translate(${donorX},${donorScale(d) + donorScale.bandwidth()/2})`
+        );
+
+      donorNodes.append("circle")
+        .attr("class", "node-circle")
+        .attr("r", 5)
+        .on("click", (event, d) => {
+          // 节点点击也同步下拉框：countrySelect
+          countrySelect.value = d;
+          document.querySelector("input[name='countryMode'][value='donor']").checked = true;
+          showCountrySeries(d, "donor");
+        });
+
+      donorNodes.append("text")
+        .attr("class", "node-label")
+        .attr("x", -10)
+        .attr("dy", "0.35em")
+        .attr("text-anchor", "end")
+        .text(d => d)
+        .on("click", (event, d) => {
+          countrySelect.value = d;
+          document.querySelector("input[name='countryMode'][value='donor']").checked = true;
+          showCountrySeries(d, "donor");
+        });
+
+      const recipientNodes = g.selectAll(".recipient-node")
+        .data(recipientsOrdered)
+        .enter()
+        .append("g")
+        .attr("class", "recipient-node")
+        .attr("transform", d =>
+          `translate(${recipientX},${recipientScale(d) + recipientScale.bandwidth()/2})`
+        );
+
+      recipientNodes.append("circle")
+        .attr("class", "node-circle")
+        .attr("r", 5)
+        .on("click", (event, d) => {
+          countrySelect.value = d;
+          document.querySelector("input[name='countryMode'][value='recipient']").checked = true;
+          showCountrySeries(d, "recipient");
+        });
+
+      recipientNodes.append("text")
+        .attr("class", "node-label")
+        .attr("x", 10)
+        .attr("dy", "0.35em")
+        .attr("text-anchor", "start")
+        .text(d => d)
+        .on("click", (event, d) => {
+          countrySelect.value = d;
+          document.querySelector("input[name='countryMode'][value='recipient']").checked = true;
+          showCountrySeries(d, "recipient");
+        });
+
+      // 初始化 slider
+      yearSlider.min = 0;
+      yearSlider.max = years.length - 1;
+      yearSlider.value = 0;
+      updateYear(+years[0]);
+
+      yearSlider.addEventListener("input", () => {
+        const idx = +yearSlider.value;
+        updateYear(years[idx]);
+      });
+
+      playButton.addEventListener("click", () => {
+        if (!isPlaying) {
+          startPlay();
+        } else {
+          stopPlay();
+        }
+      });
+
+      // 初始化下拉框选项
+      donorsOrdered.forEach(d => {
+        const opt = document.createElement("option");
+        opt.value = d; opt.textContent = d;
+        pairDonorSelect.appendChild(opt);
+      });
+      recipientsOrdered.forEach(r => {
+        const opt = document.createElement("option");
+        opt.value = r; opt.textContent = r;
+        pairRecipientSelect.appendChild(opt);
+      });
+
+      const allCountries = Array.from(new Set([...donorsOrdered, ...recipientsOrdered]));
+      allCountries.forEach(c => {
+        const opt = document.createElement("option");
+        opt.value = c; opt.textContent = c;
+        countrySelect.appendChild(opt);
+      });
+
+      // 下拉框事件
+      pairDonorSelect.addEventListener("change", () => {
+        const donor = pairDonorSelect.value;
+        const recipient = pairRecipientSelect.value;
+        if (donor && recipient) {
+          showPairSeries(donor, recipient);
+        }
+      });
+      pairRecipientSelect.addEventListener("change", () => {
+        const donor = pairDonorSelect.value;
+        const recipient = pairRecipientSelect.value;
+        if (donor && recipient) {
+          showPairSeries(donor, recipient);
+        }
+      });
+
+      document.querySelectorAll("input[name='countryMode']").forEach(radio => {
+        radio.addEventListener("change", () => {
+          const country = countrySelect.value;
+          if (country) {
+            showCountrySeries(country, getCountryMode());
+          }
+        });
+      });
+
+      countrySelect.addEventListener("change", () => {
+        const country = countrySelect.value;
+        if (country) {
+          showCountrySeries(country, getCountryMode());
+        }
+      });
+
+      // 默认初始化一个 pair 和一个 country
+      if (donorsOrdered.length && recipientsOrdered.length) {
+        pairDonorSelect.value = donorsOrdered[0];
+        pairRecipientSelect.value = recipientsOrdered[0];
+        showPairSeries(donorsOrdered[0], recipientsOrdered[0]);
+      }
+      if (allCountries.length) {
+        countrySelect.value = allCountries[0];
+        showCountrySeries(allCountries[0], getCountryMode());
+      }
+
+      function startPlay() {
+        isPlaying = true;
+        playButton.textContent = "Pause";
+        if (playTimer) clearInterval(playTimer);
+        playTimer = setInterval(() => {
+          let idx = +yearSlider.value;
+          idx = (idx + 1) % years.length;
+          yearSlider.value = idx;
+          updateYear(years[idx]);
+        }, 1200);
+      }
+
+      function stopPlay() {
+        isPlaying = false;
+        playButton.textContent = "Play";
+        if (playTimer) {
+          clearInterval(playTimer);
+          playTimer = null;
+        }
+      }
+
+      // 更新某一年的主图
+      function updateYear(year) {
+        yearLabel.textContent = year;
+        const edges = edgesByYear.get(year) || [];
+
+        const lines = linksGroup.selectAll(".link")
+          .data(edges, d => d.donor + "||" + d.recipient);
+
+        lines.exit().remove();
+
+        const linesEnter = lines.enter()
+          .append("line")
+          .attr("class", "link")
+          .attr("x1", donorX + 5)
+          .attr("y1", d => donorScale(d.donor) + donorScale.bandwidth()/2)
+          .attr("x2", recipientX - 5)
+          .attr("y2", d => recipientScale(d.recipient) + recipientScale.bandwidth()/2)
+          .attr("stroke-width", d => widthScale(d.value))
+          .on("mouseover", (event, d) => {
+            const key = d.donor + "||" + d.recipient;
+            const seriesObj = pairSeriesMap.get(key);
+            let yearsActive = 0;
+            let firstYear = null;
+            let lastYear = null;
+            if (seriesObj) {
+              seriesObj.series.forEach(pt => {
+                if (pt.value > 0) {
+                  yearsActive++;
+                  if (firstYear === null) firstYear = pt.year;
+                  lastYear = pt.year;
+                }
+              });
+            }
+            const linesText = [
+              `Year: ${d.year}`,
+              `Donor: ${d.donor}`,
+              `Recipient: ${d.recipient}`,
+              `Amount: $${formatAmount(d.value)}`
+            ];
+            if (yearsActive > 0) {
+              linesText.push(`Active years: ${yearsActive} (${firstYear}–${lastYear})`);
+            }
+            tooltip
+              .style("opacity", 1)
+              .html(linesText.join("<br>"))
+              .style("left", (event.pageX + 12) + "px")
+              .style("top", (event.pageY - 28) + "px");
+            d3.select(event.currentTarget).classed("highlight", true);
+          })
+          .on("mousemove", (event) => {
+            tooltip
+              .style("left", (event.pageX + 12) + "px")
+              .style("top", (event.pageY - 28) + "px");
+          })
+          .on("mouseout", (event) => {
+            tooltip.style("opacity", 0);
+            d3.select(event.currentTarget).classed("highlight", false);
+          })
+          .on("click", (event, d) => {
+            // 点击边时，同步 pair 下拉框
+            pairDonorSelect.value = d.donor;
+            pairRecipientSelect.value = d.recipient;
+            showPairSeries(d.donor, d.recipient);
+          });
+
+        linesEnter.merge(lines)
+          .attr("x1", donorX + 5)
+          .attr("y1", d => donorScale(d.donor) + donorScale.bandwidth()/2)
+          .attr("x2", recipientX - 5)
+          .attr("y2", d => recipientScale(d.recipient) + recipientScale.bandwidth()/2)
+          .attr("stroke-width", d => widthScale(d.value));
+      }
+
+      // 通用：画一条带坐标轴的时间序列折线图
+      function renderTimeSeries(series, options) {
+        const { color, yLabel } = options;
+        detailG.selectAll("*").remove();
+
+        const xScale = d3.scaleLinear()
+          .domain(d3.extent(years))
+          .range([0, detailInnerWidth]);
+
+        const maxVal = d3.max(series, d => d.value) || 1;
+        const yScale = d3.scaleLinear()
+          .domain([0, maxVal])
+          .range([detailInnerHeight, 0])
+          .nice();
+
+        const xAxis = d3.axisBottom(xScale)
+          .ticks(Math.min(10, years.length))
+          .tickFormat(d3.format("d"));
+
+        const yAxis = d3.axisLeft(yScale)
+          .ticks(5)
+          .tickFormat(d => "$" + (d/1e6).toFixed(1) + "M");
+
+        detailG.append("g")
+          .attr("class", "axis axis-x")
+          .attr("transform", `translate(0,${detailInnerHeight})`)
+          .call(xAxis);
+
+        detailG.append("g")
+          .attr("class", "axis axis-y")
+          .call(yAxis);
+
+        const line = d3.line()
+          .x(d => xScale(d.year))
+          .y(d => yScale(d.value));
+
+        detailG.append("path")
+          .datum(series)
+          .attr("fill", "none")
+          .attr("stroke", color)
+          .attr("stroke-width", 2)
+          .attr("d", line);
+
+        // 轴标签
+        detailG.append("text")
+          .attr("x", detailInnerWidth / 2)
+          .attr("y", detailInnerHeight + 35)
+          .attr("text-anchor", "middle")
+          .text("Year");
+
+        detailG.append("text")
+          .attr("transform", "rotate(-90)")
+          .attr("x", -detailInnerHeight / 2)
+          .attr("y", -50)
+          .attr("text-anchor", "middle")
+          .text(yLabel);
+
+        // 小圆点 + tooltip
+        detailG.selectAll(".point")
+          .data(series)
+          .enter()
+          .append("circle")
+          .attr("class", "point")
+          .attr("cx", d => xScale(d.year))
+          .attr("cy", d => yScale(d.value))
+          .attr("r", 3)
+          .attr("fill", color)
+          .on("mouseover", (event, d) => {
+            tooltip
+              .style("opacity", 1)
+              .html(
+                `Year: ${d.year}<br>` +
+                `Amount: $${formatAmount(d.value)}`
+              )
+              .style("left", (event.pageX + 12) + "px")
+              .style("top", (event.pageY - 28) + "px");
+          })
+          .on("mousemove", (event) => {
+            tooltip
+              .style("left", (event.pageX + 12) + "px")
+              .style("top", (event.pageY - 28) + "px");
+          })
+          .on("mouseout", () => {
+            tooltip.style("opacity", 0);
+          });
+      }
+
+      // 细节图：某对 donor-recipient 的时间序列
+      function showPairSeries(donor, recipient) {
+        stopPlay();
+        const key = donor + "||" + recipient;
+        const obj = pairSeriesMap.get(key);
+
+        detailTitle.textContent =
+          `Time series for ${donor} → ${recipient} (annual commitments)`;
+
+        if (!obj || !obj.series.length) {
+          detailG.selectAll("*").remove();
+          detailG.append("text")
+            .attr("text-anchor", "middle")
+            .attr("x", detailInnerWidth / 2)
+            .attr("y", detailInnerHeight / 2)
+            .text("No data for this donor–recipient pair.");
+          return;
+        }
+
+        renderTimeSeries(obj.series, {
+          color: "#4C78A8",
+          yLabel: "Commitment amount (USD)"
+        });
+      }
+
+      // 细节图：某个国家（donor / recipient）的时间序列
+      function showCountrySeries(country, mode) {
+        stopPlay();
+
+        const series =
+          mode === "donor"
+            ? donorYearTotals.get(country)
+            : recipientYearTotals.get(country);
+
+        detailTitle.textContent =
+          `Time series for ${country} as ${mode === "donor" ? "donor (outgoing)" : "recipient (incoming)"} (annual totals)`;
+
+        if (!series || !series.length) {
+          detailG.selectAll("*").remove();
+          detailG.append("text")
+            .attr("text-anchor", "middle")
+            .attr("x", detailInnerWidth / 2)
+            .attr("y", detailInnerHeight / 2)
+            .text("No data for this country.");
+          return;
+        }
+
+        renderTimeSeries(series, {
+          color: "#F58518",
+          yLabel: "Total commitment amount (USD)"
+        });
+      }
+    }).catch(err => {
+      console.error("Error loading CSV:", err);
+      alert("Error loading aiddata-countries-only.csv. Make sure the file is in the same folder and served over HTTP (not file://).");
+    });
+  </script>
+</body>
+</html>
