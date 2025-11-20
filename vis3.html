@@ -2,31 +2,24 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Vis 3: Ultimate Aid Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vis 3: Interactive Aid Explorer</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
+        /* === 全局样式 === */
         * { box-sizing: border-box; }
         body {
             font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f0f2f5;
-            height: 100vh;
-            overflow: hidden;
-            display: flex;
+            margin: 0; padding: 0; background-color: #f0f2f5;
+            height: 100vh; overflow: hidden; display: flex;
         }
 
         /* === 左侧侧边栏 === */
         .sidebar {
-            width: 360px; /* 加宽一点给饼图留空间 */
-            background: #fff;
-            border-right: 1px solid #ddd;
-            display: flex;
-            flex-direction: column;
-            padding: 20px;
-            box-shadow: 2px 0 5px rgba(0,0,0,0.05);
-            z-index: 10;
-            height: 100%;
+            width: 360px; background: #fff; border-right: 1px solid #ddd;
+            display: flex; flex-direction: column; padding: 20px;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.05); z-index: 10;
+            overflow-y: auto; /* 允许侧边栏内容过多时滚动 */
         }
 
         .sidebar-header { flex-shrink: 0; margin-bottom: 15px; }
@@ -35,6 +28,7 @@
         .control-group { margin-bottom: 15px; }
         .control-label { font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; margin-bottom: 6px; display: block; letter-spacing: 0.5px;}
         
+        /* 切换按钮 */
         .radio-group { display: flex; background: #eee; border-radius: 6px; padding: 4px; }
         .radio-group label {
             flex: 1; text-align: center; padding: 8px 0; font-size: 13px; cursor: pointer;
@@ -43,36 +37,15 @@
         .radio-group input { display: none; }
         .radio-group label.active { background: #fff; color: #333; font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 
-        /* 排名列表 (中间部分，可滚动) */
+        /* 排名列表 */
         .ranking-list { 
-            flex: 1; 
-            overflow-y: auto; 
-            margin-right: -12px; padding-right: 12px; 
-            margin-bottom: 20px;
-            border-bottom: 1px solid #eee;
+            flex: 1; overflow-y: auto; margin-right: -12px; padding-right: 12px; 
+            margin-bottom: 15px; border-bottom: 1px solid #eee; min-height: 150px;
         }
 
-        /* 🌟 新增：底部详情面板 */
-        .year-detail-panel {
-            flex-shrink: 0;
-            height: 280px; /* 固定高度给饼图 */
-            background: #fafafa;
-            border-radius: 8px;
-            padding: 15px;
-            border: 1px solid #eee;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .detail-title {
-            font-size: 14px; font-weight: bold; color: #333; width: 100%; 
-            text-align: center; margin-bottom: 10px; border-bottom: 1px solid #ddd; padding-bottom: 5px;
-        }
-
-        /* 列表项样式 */
         .rank-item {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 10px 12px; margin-bottom: 6px; background: #f9f9f9;
+            padding: 8px 10px; margin-bottom: 5px; background: #f9f9f9;
             border: 1px solid #eee; border-radius: 6px; cursor: pointer;
             transition: all 0.2s; position: relative; overflow: hidden;
         }
@@ -81,14 +54,38 @@
         .rank-item.all-item { background: #fff0f6; border-color: #ffadd2; margin-bottom: 10px; }
         .rank-item.all-item.selected { background: #fff0f6; border-color: #eb2f96; box-shadow: 0 0 0 1px #eb2f96 inset; }
 
-        .rank-bar-bg {
-            position: absolute; left: 0; top: 0; bottom: 0;
-            background: rgba(24, 144, 255, 0.12); z-index: 0; transition: width 0.5s;
-        }
+        .rank-bar-bg { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(24, 144, 255, 0.12); z-index: 0; transition: width 0.5s; }
         .rank-info { z-index: 1; display: flex; align-items: center; width: 100%; }
         .rank-num { font-weight: bold; color: #aaa; width: 25px; font-size: 12px; }
         .rank-name { flex: 1; font-weight: 600; font-size: 13px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
         .rank-value { font-size: 12px; color: #555; font-family: "Menlo", monospace; margin-left: 5px;}
+
+        /* 详情面板 (饼图) */
+        .year-detail-panel {
+            flex-shrink: 0; height: 230px; background: #fafafa;
+            border-radius: 8px; padding: 10px; border: 1px solid #eee;
+            display: flex; flex-direction: column; align-items: center;
+            margin-bottom: 15px;
+        }
+        .detail-title {
+            font-size: 13px; font-weight: bold; color: #333; width: 100%; 
+            text-align: center; margin-bottom: 5px; border-bottom: 1px solid #ddd; padding-bottom: 5px;
+        }
+        
+        /* 🌟 新增：饼图交互样式 */
+        .pie-slice { cursor: pointer; transition: opacity 0.2s; }
+        .pie-slice:hover { opacity: 0.8; stroke: #333; stroke-width: 2px; }
+
+        /* 🌟 修改：操作说明面板 (内容更丰富) */
+        .instruction-panel {
+            flex-shrink: 0; background: #e6f7ff; border: 1px solid #91d5ff;
+            border-radius: 6px; padding: 12px; font-size: 11px; color: #0050b3;
+            line-height: 1.5;
+        }
+        .instruction-title { font-weight: bold; margin-bottom: 8px; color: #003a8c; font-size: 12px; border-bottom: 1px solid rgba(0,58,140,0.2); padding-bottom: 4px;}
+        .instruction-section { margin-bottom: 8px; }
+        .instruction-item { display: flex; gap: 6px; margin-bottom: 3px; align-items: flex-start; }
+        .icon { font-size: 13px; min-width: 16px; text-align: center; }
 
         /* === 右侧主内容 === */
         .main-content {
@@ -113,8 +110,15 @@
             display: flex; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 10px;
             padding: 5px 0; border-bottom: 1px dashed #eee;
         }
-        .legend-item { display: flex; align-items: center; font-size: 11px; color: #555; }
+        .legend-item { 
+            display: flex; align-items: center; font-size: 11px; color: #555; 
+            cursor: pointer; transition: all 0.2s; 
+            padding: 2px 6px; border-radius: 4px; border: 1px solid transparent;
+        }
         .legend-color { width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; }
+        .legend-item:hover { background-color: #f0f0f0; border-color: #ddd; }
+        .legend-item.inactive { opacity: 0.3; } 
+        .legend-item.locked { background-color: #e6f7ff; border-color: #1890ff; font-weight: bold; color: #096dd9; opacity: 1; }
 
         .toggle-container {
             display: flex; align-items: center; font-size: 12px; color: #555; cursor: pointer;
@@ -124,10 +128,19 @@
 
         .strip-legend { display: flex; gap: 15px; font-size: 11px; color: #666; align-items: center; }
         .strip-box { width: 10px; height: 10px; border-radius: 2px; margin-right: 4px;}
+        
+        .strip-row { cursor: pointer; }
+        .strip-row .hit-area { cursor: pointer; transition: fill 0.2s; }
+        .strip-row:hover .hit-area { fill: #f5f5f5; }
+
+        .strip-label { font-size: 11px; fill: #333; font-weight: 500; pointer-events: none; transition: font-weight 0.2s, fill 0.2s; }
+        .strip-label.inactive { fill: #ccc; }
+        .strip-label.locked { font-weight: bold; fill: #1890ff; font-size: 12px; }
 
         .tooltip {
             position: absolute; background: rgba(0,0,0,0.9); color: white;
             padding: 8px 12px; border-radius: 4px; font-size: 12px; pointer-events: none; opacity: 0; z-index: 100;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
         }
     </style>
 </head>
@@ -151,8 +164,24 @@
         <div id="rankingList" class="ranking-list"></div>
 
         <div class="year-detail-panel">
-            <div id="detail-title" class="detail-title">Hover over chart to see details</div>
+            <div id="detail-title" class="detail-title">Hover chart for breakdown</div>
             <div id="pie-chart"></div>
+        </div>
+
+        <div class="instruction-panel">
+            <div class="instruction-title">💡 User Guide</div>
+            
+            <div class="instruction-section">
+                <div style="font-weight:bold; margin-bottom:2px; color:#003a8c;">Interaction:</div>
+                <div class="instruction-item"><div class="icon">🖱</div> <div><strong>Click</strong> any country (List / Legend / Pie Slice) to <strong>LOCK</strong> highlight.</div></div>
+                <div class="instruction-item"><div class="icon">🔍</div> <div><strong>Brush</strong> bottom timeline to zoom.</div></div>
+            </div>
+
+            <div class="instruction-section" style="margin-bottom:0;">
+                <div style="font-weight:bold; margin-bottom:2px; color:#003a8c;">View Modes:</div>
+                <div class="instruction-item"><div class="icon">📊</div> <div><strong>Normal:</strong> Shows absolute amount (USD). Good for comparing magnitude.</div></div>
+                <div class="instruction-item"><div class="icon">％</div> <div><strong>100% View:</strong> Shows percentage share. Reveals <strong>strategy shifts</strong> (allocation) or <strong>dependency</strong>, ignoring total volume.</div></div>
+            </div>
         </div>
     </div>
 
@@ -170,9 +199,12 @@
 
         <div class="chart-card">
             <div class="card-header">
-                <div class="chart-title" style="border-color: #52c41a;">Consistency Timeline</div>
+                <div class="chart-title" style="border-color: #52c41a;">
+                    Consistency Timeline 
+                    <span style="font-size: 11px; font-weight: normal; color: #666; margin-left: 10px;">(Brush to Zoom)</span>
+                </div>
                 <div class="strip-legend">
-                    <span style="font-weight:bold;">Color Intensity:</span>
+                    <span style="font-weight:bold;">Intensity:</span>
                     <div style="display:flex; align-items:center; margin-left:5px;">
                         <div class="strip-box" style="background:#eee"></div> 0
                     </div>
