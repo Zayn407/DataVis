@@ -1,10 +1,11 @@
-// vis3.js - Pie Chart Interaction & Final Polish
+// vis3.js - Fixed Interaction & Clarified Titles
 
-const margin = { top: 10, right: 30, bottom: 30, left: 160 }; 
+const margin = { top: 20, right: 30, bottom: 30, left: 160 }; 
 const width = 850 - margin.left - margin.right;
 const heightMain = 350 - margin.top - margin.bottom;
 const heightStrip = 180 - margin.top - margin.bottom;
 
+// 1. 初始化 SVG
 const svgMain = d3.select("#main-chart").append("svg")
     .attr("width", width + margin.left + margin.right)
     .attr("height", heightMain + margin.top + margin.bottom)
@@ -35,11 +36,14 @@ let currentChartData = [];
 let brush;
 let cachedSeriesData = [];
 let lockedCountry = null;
+let lockedYear = null; 
 
 d3.csv("aiddata-countries-only.csv").then(data => {
     rawData = data.map(d => ({ donor: d.donor, recipient: d.recipient, amount: +d.commitment_amount_usd_constant, year: +d.year })).filter(d => d.amount > 0 && d.year);
 
     const calcTotals = (key) => d3.rollups(rawData, v => d3.sum(v, d => d.amount), d => d[key]).map(d => ({ name: d[0], total: d[1] })).sort((a, b) => b.total - a.total);
+    
+    // 确保 Donors 是 Top 20, Recipients 是 Top 10
     topDonors = calcTotals("donor").slice(0, 20);
     topRecipients = calcTotals("recipient").slice(0, 10);
 
@@ -59,26 +63,33 @@ d3.csv("aiddata-countries-only.csv").then(data => {
     const xAxisStrip = d3.axisBottom(xStrip).tickFormat(d3.format("d"));
 
     svgMain.append("g").attr("class", "x-axis").attr("transform", `translate(0,${heightMain})`).call(xAxisMain);
-    svgStrip.append("g").attr("class", "x-axis").attr("transform", `translate(0,${heightStrip})`).call(xAxisStrip);
     svgMain.append("g").attr("class", "y-axis");
+
+    const axisGroup = svgStrip.append("g").attr("class", "x-axis").attr("transform", `translate(0,${heightStrip})`).call(xAxisStrip);
+    setupAxisInteraction(axisGroup);
 
     brush = d3.brushX().extent([[0, 0], [width, heightStrip]]).on("brush end", brushed);
     const brushGroup = svgStrip.append("g").attr("class", "brush").call(brush);
 
     brushGroup.selectAll(".overlay")
         .on("mousemove", (event) => {
+            if (lockedYear) return; 
             const [mx] = d3.pointer(event);
             const year = Math.round(xStrip.invert(mx));
             updateFocusLines(year);
             drawPie(year, colorScale.domain());
+            highlightAxisLabel(year); 
         })
         .on("mouseout", () => {
+            if (lockedYear) return;
             focusLineMain.style("opacity", 0);
             focusLineStrip.style("opacity", 0);
+            highlightAxisLabel(null); 
         })
-        .on("click", () => {
-            lockedCountry = null;
-            unhighlight();
+        .on("click", (event) => {
+            const [mx] = d3.pointer(event);
+            const year = Math.round(xStrip.invert(mx));
+            toggleYearLock(year); 
         });
 
     const radios = document.querySelectorAll("input[name='viewMode']");
@@ -109,11 +120,51 @@ function brushed(event) {
     redrawMainChart();
 }
 
+function setupAxisInteraction(g) {
+    g.selectAll(".tick text")
+        .style("cursor", "pointer") 
+        .style("font-size", "11px")
+        .style("transition", "all 0.2s")
+        .on("mouseover", function() {
+            if (!d3.select(this).classed("locked-label")) d3.select(this).style("fill", "#1890ff").style("font-weight", "bold");
+        })
+        .on("mouseout", function() {
+            if (!d3.select(this).classed("locked-label")) d3.select(this).style("fill", "currentColor").style("font-weight", "normal");
+        })
+        .on("click", (event, d) => toggleYearLock(d));
+}
+
+function highlightAxisLabel(year) {
+    d3.selectAll(".x-axis .tick text").style("fill", "currentColor").style("font-weight", "normal").classed("locked-label", false);
+    if (year !== null) {
+        d3.selectAll(".x-axis .tick").filter(d => d === year).select("text")
+            .style("fill", "#ff4d4f").style("font-weight", "bold").style("font-size", "13px").classed("locked-label", true); 
+    }
+}
+
+function toggleYearLock(year) {
+    if (lockedYear === year) {
+        lockedYear = null; 
+        highlightAxisLabel(null);
+        focusLineMain.style("opacity", 0);
+        focusLineStrip.style("opacity", 0);
+    } else {
+        lockedYear = year; 
+        highlightAxisLabel(year);
+        updateFocusLines(year);
+        drawPie(year, colorScale.domain());
+    }
+}
+
 function updateSideList(mode) {
     const container = d3.select("#rankingList");
     container.html(""); 
     const listData = (mode === "donor") ? topDonors : topRecipients;
-    d3.select("#listLabel").text((mode === "donor") ? "Top 20 Donors" : "Top 10 Recipients");
+    
+    // 🌟 更新侧边栏标题，更清晰
+    const labelText = (mode === "donor") ? "Select Donor (Source)" : "Select Recipient (Target)";
+    d3.select("#listLabel").text(labelText);
+    
     const maxTotal = listData[0].total;
     const grandTotal = d3.sum(listData, d => d.total);
 
@@ -146,6 +197,19 @@ function updateCharts(selectedCountry, mode) {
     const counterparts = counterpartsData.map(d => d.name);
     colorScale.domain(counterparts);
     updateLegend(counterparts);
+    
+    // 🌟 动态更新图表标题
+    let titleText = "";
+    if (mode === "donor") {
+        titleText = (selectedCountry === "ALL") 
+            ? "Where did the money go? (Destinations of Top 20 Donors)" 
+            : `Where did [${selectedCountry}] send money?`;
+    } else {
+        titleText = (selectedCountry === "ALL") 
+            ? "Where did the money come from? (Sources for Top 10 Recipients)" 
+            : `Who gave money to [${selectedCountry}]?`;
+    }
+    d3.select(".chart-title").text(titleText);
 
     currentChartData = yearRange.map(year => {
         const obj = { year: year, total: 0 };
@@ -196,18 +260,24 @@ function updateCharts(selectedCountry, mode) {
     const strips = svgStrip.selectAll(".strip-row").data(counterparts, d => d);
     const stripsEnter = strips.enter().append("g").attr("class", "strip-row");
 
+    // 🌟 左侧交互区：点击锁定
     stripsEnter.append("rect").attr("class", "hit-area")
-        .attr("x", -margin.left).attr("y", -stripHeight/2).attr("width", margin.left).attr("height", stripHeight).attr("fill", "transparent");
+        .attr("x", -margin.left).attr("y", -stripHeight/2).attr("width", margin.left).attr("height", stripHeight).attr("fill", "transparent")
+        .on("click", (e, d) => {
+             e.stopPropagation();
+             toggleLock(d);
+        })
+        .on("mouseover", (e, d) => { if (!lockedCountry) highlight(d); }) 
+        .on("mouseout", () => { if (!lockedCountry) unhighlight(); });
 
     stripsEnter.append("text").attr("class", "strip-label")
         .attr("x", -10).attr("dy", "0.35em").attr("text-anchor", "end")
         .style("font-size", "11px").style("fill", "#333"); 
 
     const stripsMerge = stripsEnter.merge(strips)
-        .attr("transform", (d, i) => `translate(0, ${i * stripHeight + stripHeight/2})`)
-        .on("mouseover", (e, d) => { if (!lockedCountry) highlight(d); }) 
-        .on("mouseout", () => { if (!lockedCountry) unhighlight(); })
-        .on("click", (e, d) => toggleLock(d));
+        .attr("transform", (d, i) => `translate(0, ${i * stripHeight + stripHeight/2})`);
+    
+    // 🌟 注意：右侧色块区域移除了点击事件
         
     stripsMerge.select("text").text(d => d);
 
@@ -229,10 +299,14 @@ function updateCharts(selectedCountry, mode) {
                 const pt = currentChartData.find(c => c.year === yr);
                 const val = pt ? pt[countryName] : 0;
                 return (val > 0) ? opacityScale(Math.max(1, val)) : 1; 
-            });
+            })
+            .style("pointer-events", "none"); // 🌟 禁用右侧鼠标响应，保证 Brush 可用
         blocks.exit().remove();
     });
     strips.exit().remove();
+    
+    svgStrip.select(".x-axis").call(xAxisStrip);
+    setupAxisInteraction(svgStrip.select(".x-axis"));
     svgStrip.select(".brush").raise();
 }
 
@@ -248,20 +322,24 @@ function redrawMainChart() {
         .attr("stroke", "none")
         .attr("fill-opacity", 0.6)
         .on("mouseover", (e, d) => { if (!lockedCountry) highlight(d.key); })
-        .on("mouseout", () => { if (!lockedCountry) unhighlight(); })
-        .on("click", (e, d) => toggleLock(d.key));
+        .on("mouseout", () => { if (!lockedCountry) unhighlight(); });
+        // 🌟 移除 click 事件
 
     layers.exit().remove();
     
     svgMain.on("mousemove", (event) => {
+        if (lockedYear) return;
         const [mx] = d3.pointer(event);
         const year = Math.round(xMain.invert(mx));
         if (year < yearRange[0] || year > yearRange[yearRange.length-1]) return;
         updateFocusLines(year);
         drawPie(year, colorScale.domain());
+        highlightAxisLabel(year);
     }).on("mouseout", () => {
+        if (lockedYear) return;
         focusLineMain.style("opacity", 0);
         focusLineStrip.style("opacity", 0);
+        highlightAxisLabel(null);
     });
 }
 
@@ -279,37 +357,39 @@ function updateFocusLines(year) {
     const lineXStrip = xStrip(year);
     const lineXMain = xMain(year);
     const [minY, maxY] = xMain.domain();
+    
+    const lineDash = lockedYear ? "none" : "4 4";
+    const lineWidth = lockedYear ? 2 : 1;
+    const lineOpacity = 1;
+
     if (year >= minY && year <= maxY) {
-        focusLineMain.style("opacity", 1).attr("x1", lineXMain).attr("x2", lineXMain);
+        focusLineMain.style("opacity", lineOpacity)
+            .attr("x1", lineXMain).attr("x2", lineXMain)
+            .attr("stroke-dasharray", lineDash).attr("stroke-width", lineWidth);
     } else {
         focusLineMain.style("opacity", 0);
     }
-    focusLineStrip.style("opacity", 1).attr("x1", lineXStrip).attr("x2", lineXStrip);
+    focusLineStrip.style("opacity", lineOpacity)
+        .attr("x1", lineXStrip).attr("x2", lineXStrip)
+        .attr("stroke-dasharray", lineDash).attr("stroke-width", lineWidth);
 }
 
-// 🌟🌟🌟 改进的饼图函数：支持交互 🌟🌟🌟
 function drawPie(year, keys) {
     const dataRow = currentChartData.find(d => d.year === year);
     if (!dataRow) return;
-    d3.select("#detail-title").text(`${year} Breakdown`);
+    const suffix = lockedYear ? " (Locked)" : "";
+    d3.select("#detail-title").text(`${year} Breakdown${suffix}`);
+    
     const pieData = keys.map(k => ({ key: k, value: dataRow[k] || 0 })).filter(d => d.value > 0);
     const total = d3.sum(pieData, d => d.value);
     const pie = d3.pie().value(d => d.value).sort(null);
     const arc = d3.arc().innerRadius(pieRadius * 0.5).outerRadius(pieRadius * 0.9);
-    
     const slices = svgPie.selectAll("path").data(pie(pieData), d => d.data.key);
-    slices.enter().append("path")
-        .attr("class", "pie-slice") // 增加类名以应用CSS
-        .merge(slices)
-        .attr("d", arc)
-        .attr("fill", d => colorScale(d.data.key))
-        .attr("stroke", "#fff")
-        .attr("stroke-width", 1)
-        // 🌟 绑定交互
+    slices.enter().append("path").attr("class", "pie-slice").merge(slices)
+        .attr("d", arc).attr("fill", d => colorScale(d.data.key)).attr("stroke", "#fff").attr("stroke-width", 1)
         .on("mouseover", (e, d) => { if (!lockedCountry) highlight(d.data.key); })
         .on("mouseout", () => { if (!lockedCountry) unhighlight(); })
         .on("click", (e, d) => toggleLock(d.data.key));
-
     slices.exit().remove();
     pieLabel.text(d3.format(".2s")(total));
     if (total === 0) { pieLabel.text("No Data"); svgPie.selectAll("path").remove(); }
@@ -323,21 +403,18 @@ function updateLegend(names) {
             .on("mouseover", () => { if (!lockedCountry) highlight(name); })
             .on("mouseout", () => { if (!lockedCountry) unhighlight(); })
             .on("click", () => toggleLock(name));
-
         item.append("div").attr("class", "legend-color").style("background-color", colorScale(name));
         item.append("span").text(name);
     });
 }
 
 function highlight(targetName) {
-    svgMain.selectAll(".layer")
-        .transition().duration(100)
-        .attr("fill", d => d.key === targetName ? colorScale(d.key) : "none") 
+    svgMain.selectAll(".layer").transition().duration(100)
+        .attr("fill", d => d.key === targetName ? colorScale(d.key) : "#fafafa") 
         .attr("stroke", d => d.key === targetName ? "#000" : "#ccc")
         .attr("stroke-width", d => d.key === targetName ? 2 : 1)
         .attr("stroke-dasharray", d => d.key === targetName ? "none" : "4 2")
-        .attr("fill-opacity", d => d.key === targetName ? 1 : 0);
-
+        .attr("fill-opacity", d => d.key === targetName ? 1 : 0.6);
     svgMain.selectAll(".layer").filter(d => d.key === targetName).raise();
 
     svgStrip.selectAll(".strip-row").each(function(d) {
@@ -351,20 +428,13 @@ function highlight(targetName) {
             return "#eee";
         });
     });
-
-    d3.selectAll(".legend-item").classed("locked", function() {
-        return d3.select(this).text() === targetName;
-    });
+    d3.selectAll(".legend-item").classed("locked", function() { return d3.select(this).text() === targetName; });
 }
 
 function unhighlight() {
-    svgMain.selectAll(".layer")
-        .transition().duration(200)
+    svgMain.selectAll(".layer").transition().duration(200)
         .attr("fill", d => colorScale(d.key))
-        .attr("stroke", "none")
-        .attr("stroke-dasharray", "none")
-        .attr("fill-opacity", 0.6);
-
+        .attr("stroke", "none").attr("stroke-dasharray", "none").attr("fill-opacity", 0.6);
     svgStrip.selectAll(".strip-row").each(function(d) {
         const row = d3.select(this);
         row.select("text").classed("locked", false);
@@ -374,6 +444,5 @@ function unhighlight() {
             return (pt && pt[d] > 0) ? colorScale(d) : "#eee";
         });
     });
-
     d3.selectAll(".legend-item").classed("locked", false);
 }

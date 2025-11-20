@@ -19,7 +19,6 @@
             width: 360px; background: #fff; border-right: 1px solid #ddd;
             display: flex; flex-direction: column; padding: 20px;
             box-shadow: 2px 0 5px rgba(0,0,0,0.05); z-index: 10;
-            overflow-y: auto; /* 允许侧边栏内容过多时滚动 */
         }
 
         .sidebar-header { flex-shrink: 0; margin-bottom: 15px; }
@@ -28,7 +27,7 @@
         .control-group { margin-bottom: 15px; }
         .control-label { font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; margin-bottom: 6px; display: block; letter-spacing: 0.5px;}
         
-        /* 切换按钮 */
+        /* 视角切换按钮 */
         .radio-group { display: flex; background: #eee; border-radius: 6px; padding: 4px; }
         .radio-group label {
             flex: 1; text-align: center; padding: 8px 0; font-size: 13px; cursor: pointer;
@@ -37,12 +36,13 @@
         .radio-group input { display: none; }
         .radio-group label.active { background: #fff; color: #333; font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 
-        /* 排名列表 */
+        /* 排名列表 (中间部分，可滚动) */
         .ranking-list { 
             flex: 1; overflow-y: auto; margin-right: -12px; padding-right: 12px; 
             margin-bottom: 15px; border-bottom: 1px solid #eee; min-height: 150px;
         }
 
+        /* 列表项样式 */
         .rank-item {
             display: flex; align-items: center; justify-content: space-between;
             padding: 8px 10px; margin-bottom: 5px; background: #f9f9f9;
@@ -50,7 +50,10 @@
             transition: all 0.2s; position: relative; overflow: hidden;
         }
         .rank-item:hover { background: #f0f0f0; border-color: #ccc; transform: translateY(-1px); }
+        
+        /* 选中/锁定状态 */
         .rank-item.selected { background: #e6f7ff; border-color: #1890ff; box-shadow: 0 0 0 1px #1890ff inset; }
+        
         .rank-item.all-item { background: #fff0f6; border-color: #ffadd2; margin-bottom: 10px; }
         .rank-item.all-item.selected { background: #fff0f6; border-color: #eb2f96; box-shadow: 0 0 0 1px #eb2f96 inset; }
 
@@ -71,12 +74,12 @@
             font-size: 13px; font-weight: bold; color: #333; width: 100%; 
             text-align: center; margin-bottom: 5px; border-bottom: 1px solid #ddd; padding-bottom: 5px;
         }
-        
-        /* 🌟 新增：饼图交互样式 */
+
+        /* 饼图切片交互 */
         .pie-slice { cursor: pointer; transition: opacity 0.2s; }
         .pie-slice:hover { opacity: 0.8; stroke: #333; stroke-width: 2px; }
 
-        /* 🌟 修改：操作说明面板 (内容更丰富) */
+        /* 操作说明面板 */
         .instruction-panel {
             flex-shrink: 0; background: #e6f7ff; border: 1px solid #91d5ff;
             border-radius: 6px; padding: 12px; font-size: 11px; color: #0050b3;
@@ -106,6 +109,7 @@
         .chart-title { font-size: 16px; font-weight: 700; color: #333; display: flex; align-items: center; gap: 10px; }
         .chart-title::before { content: ""; display: block; width: 4px; height: 18px; background: #1890ff; border-radius: 2px; }
 
+        /* 图例区域 */
         .legend-container {
             display: flex; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 10px;
             padding: 5px 0; border-bottom: 1px dashed #eee;
@@ -116,27 +120,37 @@
             padding: 2px 6px; border-radius: 4px; border: 1px solid transparent;
         }
         .legend-color { width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; }
+        
         .legend-item:hover { background-color: #f0f0f0; border-color: #ddd; }
         .legend-item.inactive { opacity: 0.3; } 
-        .legend-item.locked { background-color: #e6f7ff; border-color: #1890ff; font-weight: bold; color: #096dd9; opacity: 1; }
+        .legend-item.locked { 
+            background-color: #e6f7ff; border-color: #1890ff; 
+            font-weight: bold; color: #096dd9; opacity: 1; 
+        }
 
+        /* 100% 切换开关 */
         .toggle-container {
             display: flex; align-items: center; font-size: 12px; color: #555; cursor: pointer;
             background: #f5f5f5; padding: 4px 8px; border-radius: 15px;
         }
         .toggle-container input { margin-right: 6px; }
 
+        /* 底部图表图例 */
         .strip-legend { display: flex; gap: 15px; font-size: 11px; color: #666; align-items: center; }
         .strip-box { width: 10px; height: 10px; border-radius: 2px; margin-right: 4px;}
-        
-        .strip-row { cursor: pointer; }
-        .strip-row .hit-area { cursor: pointer; transition: fill 0.2s; }
-        .strip-row:hover .hit-area { fill: #f5f5f5; }
 
+        /* 底部图表交互区域 */
+        .strip-row { cursor: pointer; }
+        /* 🌟 点击热区样式 */
+        .strip-row .hit-area { cursor: pointer; transition: fill 0.2s; }
+        .strip-row:hover .hit-area { fill: #f5f5f5; } /* 悬停时左侧变灰 */
+
+        /* 国家标签 */
         .strip-label { font-size: 11px; fill: #333; font-weight: 500; pointer-events: none; transition: font-weight 0.2s, fill 0.2s; }
         .strip-label.inactive { fill: #ccc; }
         .strip-label.locked { font-weight: bold; fill: #1890ff; font-size: 12px; }
 
+        /* Tooltip */
         .tooltip {
             position: absolute; background: rgba(0,0,0,0.9); color: white;
             padding: 8px 12px; border-radius: 4px; font-size: 12px; pointer-events: none; opacity: 0; z-index: 100;
@@ -174,13 +188,14 @@
             <div class="instruction-section">
                 <div style="font-weight:bold; margin-bottom:2px; color:#003a8c;">Interaction:</div>
                 <div class="instruction-item"><div class="icon">🖱</div> <div><strong>Click</strong> any country (List / Legend / Pie Slice) to <strong>LOCK</strong> highlight.</div></div>
-                <div class="instruction-item"><div class="icon">🔍</div> <div><strong>Brush</strong> bottom timeline to zoom.</div></div>
+                <div class="instruction-item"><div class="icon">📅</div> <div><strong>Click</strong> bottom timeline to <strong>LOCK Year</strong> (Pie Chart freezes).</div></div>
+                <div class="instruction-item"><div class="icon">🔍</div> <div><strong>Brush (Drag)</strong> bottom timeline to zoom.</div></div>
             </div>
 
             <div class="instruction-section" style="margin-bottom:0;">
                 <div style="font-weight:bold; margin-bottom:2px; color:#003a8c;">View Modes:</div>
-                <div class="instruction-item"><div class="icon">📊</div> <div><strong>Normal:</strong> Shows absolute amount (USD). Good for comparing magnitude.</div></div>
-                <div class="instruction-item"><div class="icon">％</div> <div><strong>100% View:</strong> Shows percentage share. Reveals <strong>strategy shifts</strong> (allocation) or <strong>dependency</strong>, ignoring total volume.</div></div>
+                <div class="instruction-item"><div class="icon">📊</div> <div><strong>Normal:</strong> Absolute amount (USD). Compares magnitude.</div></div>
+                <div class="instruction-item"><div class="icon">％</div> <div><strong>100% View:</strong> Percentage share. Reveals <strong>strategy/dependency shifts</strong>, ignoring total volume.</div></div>
             </div>
         </div>
     </div>
