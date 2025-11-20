@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualization 3: Time-varying Aid Flows</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f9f9f9;
+        }
+
+        h2 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        p.description {
+            max-width: 800px;
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+
+        /* 控件区域样式 */
+        .controls {
+            margin: 10px 0 20px 0;
+            padding: 10px 20px;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .controls button {
+            padding: 5px 15px;
+            cursor: pointer;
+            font-size: 14px;
+            background-color: #4C78A8;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            transition: background-color 0.2s;
+        }
+
+        .controls button:hover {
+            background-color: #355475;
+        }
+
+        /* 图表容器样式 */
+        #mainChart, #detailChart {
+            background: #fff;
+            border: 1px solid #eee;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+
+        /* 提示框 Tooltip 样式 */
+        .tooltip {
+            position: absolute;
+            text-align: left;
+            padding: 8px;
+            font-size: 12px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            border-radius: 4px;
+            pointer-events: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Visualization 3: Evolution of Aid Flows (Top Donors & Recipients)</h2>
+    
+    <p class="description">
+        This visualization explores how aid patterns change over time. 
+        Use the <strong>Play</strong> button or drag the slider to change the year. 
+        <strong>Click</strong> on a node or a link to see the historical trend in the bottom chart.
+    </p>
+
+    <div class="controls">
+        <label style="margin-right: 10px; font-weight: bold;">Year Control:</label>
+    </div>
+
+    <script src="vis3.js"></script>
+
+</body>
+</html>
