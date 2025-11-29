@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AidData Dashboard - Compact Final</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        /* === Global Layout (One Screen) === */
+        body {
+            font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0; padding: 0;
+            background-color: #f8f9fa;
+            height: 100vh;
+            overflow: hidden; /* No scrolling */
+            display: flex; flex-direction: column;
+        }
+
+        header {
+            height: 40px; background: #fff; border-bottom: 1px solid #ddd;
+            padding: 0 20px; display: flex; align-items: center; justify-content: space-between;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05); z-index: 100; flex-shrink: 0;
+        }
+        h1 { font-size: 16px; margin: 0; color: #333; font-weight: 700; }
+        .hint { font-size: 12px; color: #666; }
+
+        .dashboard-container {
+            flex: 1; display: grid;
+            grid-template-columns: 320px 1fr;
+            /* Top 60%, Bottom 40% (Compact) */
+            grid-template-rows: 60% 40%;
+            grid-template-areas: "donut main" "timeline timeline";
+            gap: 10px; padding: 10px;
+            overflow: hidden;
+        }
+
+        /* === Panels === */
+        .panel {
+            background: #fff; border: 1px solid #e1e4e8; border-radius: 6px;
+            display: flex; flex-direction: column; box-shadow: 0 2px 4px rgba(0,0,0,0.02); position: relative;
+            overflow: hidden;
+        }
+        .panel-donut { grid-area: donut; }
+        .panel-main { grid-area: main; }
+        .panel-timeline { grid-area: timeline; }
+
+        .panel-header {
+            padding: 8px 15px; background: #f1f3f5; border-bottom: 1px solid #e1e4e8;
+            font-weight: 600; font-size: 13px; color: #495057;
+            display: flex; justify-content: space-between; align-items: center;
+            flex-shrink: 0;
+        }
+
+        .chart-area { flex: 1; position: relative; overflow: hidden; }
+
+        /* === Controls === */
+        .controls { display: flex; gap: 5px; align-items: center; }
+        .controls button {
+            border: 1px solid #ccc; background: #fff; cursor: pointer; padding: 2px 8px; font-size: 11px; border-radius: 3px;
+        }
+        .controls button.active { background: #4e79a7; color: #fff; border-color: #4e79a7; }
+
+        /* === Tooltip === */
+        #tooltip {
+            position: absolute; padding: 8px 12px; background: rgba(30, 30, 30, 0.9); color: #fff;
+            border-radius: 4px; pointer-events: none; font-size: 12px; opacity: 0; z-index: 2000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2); max-width: 280px; line-height: 1.4; border: 1px solid #555;
+        }
+
+        /* === Styles === */
+        .link-path { fill: none; stroke-linecap: butt; cursor: pointer; transition: opacity 0.3s; }
+        .node circle { fill: #fff; stroke: #555; stroke-width: 1px; cursor: pointer; transition: all 0.2s; }
+        .axis-label { font-size: 12px; font-weight: bold; fill: #888; cursor: pointer; transition: fill 0.2s; }
+        .axis-label.active { fill: #1f77b4; text-decoration: underline; font-size: 13px; }
+        .hidden { display: none !important; }
+
+        .area-layer {
+            stroke: #fff; stroke-width: 0.5px;
+            fill-opacity: 0.6; cursor: pointer; transition: fill-opacity 0.2s;
+        }
+        .area-layer:hover { stroke: #333; stroke-width: 1px; fill-opacity: 0.9; }
+
+        .strip-cell { shape-rendering: crispEdges; }
+        .strip-row text { fill: #444; cursor: pointer; alignment-baseline: middle; }
+        .strip-row:hover text { font-weight: bold; fill: #000; }
+
+        .brush .selection { fill: #777; fill-opacity: 0.15; stroke: #333; stroke-width: 1px; stroke-dasharray: 4; }
+
+        .legend-container { padding: 8px; font-size: 11px; display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid #eee; }
+        .legend-item { display: flex; align-items: center; color: #555; }
+        .legend-color { width: 12px; height: 12px; border-radius: 2px; margin-right: 5px; }
+
+        .donut-label {
+            font-size: 11px; fill: #fff; pointer-events: none;
+            text-shadow: 0 0 3px rgba(0,0,0,0.8); font-weight: 600;
+        }
+        .donut-center-title{
+            font-size: 11px;
+            fill: #666;
+            font-weight: 600;
+        }
+        .donut-center-value{
+            font-size: 16px;
+            fill: #111;
+            font-weight: 800;
+        }
+
+        .row-hit { fill: transparent; cursor: pointer; }
+        .row-hit:hover { fill: rgba(0,0,0,0.05); }
+
+        /* ✅ 只允许“最下面方框图”轻微滚动（不影响全页） */
+        #timeline-strip-chart{
+            overflow-y: auto;
+            overflow-x: hidden;
+            scrollbar-width: thin;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>AidData Analysis</h1>
+    <span class="hint">
+    Top: <strong>Click</strong> nodes/links to filter flows |
+    Bottom: <strong>Brush</strong> to zoom years, <strong>Hover</strong> to isolate, <strong>Click</strong> to lock, <strong>Blank-click</strong> to reset
+    </span>
+</header>
+
+<div class="dashboard-container">
+
+    <div class="panel panel-donut">
+        <div class="panel-header"><span id="donut-title">Purpose Breakdown</span></div>
+        <div id="purpose-legend" class="legend-container"></div>
+        <div id="donut-chart" class="chart-area"></div>
+    </div>
+
+    <div class="panel panel-main">
+        <div class="panel-header">
+            <span>Flow Network</span>
+            <div style="font-size:11px; color:#666;">
+                Click <strong>DONORS</strong> or <strong>RECIPIENTS</strong> below to flip the Bottom Chart
+            </div>
+        </div>
+        <div id="main-chart" class="chart-area"></div>
+    </div>
+
+    <div class="panel panel-timeline">
+        <div class="panel-header">
+            <span id="timeline-title">Trend Analysis</span>
+            <div class="controls">
+                <span>View:</span>
+                <button id="btn-abs" class="active" onclick="setStackMode('stack')">Absolute</button>
+                <button id="btn-pct" onclick="setStackMode('expand')">100%</button>
+            </div>
+        </div>
+
+        <!-- ✅ 改这里：折线图稍矮一点点，方框图高一点点 -->
+        <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+            <div id="timeline-area-chart" style="flex: 2.3; border-bottom: 1px solid #eee; overflow: hidden;"></div>
+            <div id="timeline-strip-chart" style="flex: 2.7;"></div>
+        </div>
+    </div>
+
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+// === Configuration ===
+const CONFIG = {
+    topDonors: 20, topRecipients: 10, topPurposes: 5,
+    purposeColors: ["#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3", "#a6d854"],
+    countryColors: d3.schemeTableau10.concat(d3.schemeSet3).concat(d3.schemePastel1),
+    // ✅ timeline 展示“邻居”最多多少条（不然太挤）
+    timelineMaxSeries: 18
+};
+
+// === Global State ===
+let state = {
+    data: [],
+    donors: [], recipients: [], purposes: [],
+    purposeScale: null, countryScale: null,
+
+    // timeline global mode（无主图选中时用）
+    vis3Mode: 'recipient', // donor vs recipient
+    stackMode: 'stack',
+    brushSelection: null,
+
+    // ✅ main selection anchor 逻辑（你这次要的核心）
+    anchorCountry: null,      // 例如 "United States"
+    anchorRole: null,         // "donor" 或 "recipient"
+    forcedNeighbor: null,     // 仅 link 选择时用（只显示那一个 partner）
+    currentSubset: null,      // 当前 dashboard 的数据子集（跟主图选择一致）
+
+    // ✅ timeline 内部 focus（只影响下面两张图，不再影响主图）
+    selectedCountry: null,  // 这里改为代表“选中的 series”（某个 neighbor）
+    hoverCountry: null,     // hover 的 series
+
+    // ✅ 自动 margin（解决国家名压色块 + 年份对齐）
+    timelineMargins: null
+};
+
+// ======= ✅ Timeline layout helpers (NEW) =======
+function measureMaxLabelWidth(labels, fontSize = 11) {
+    const ctx = measureMaxLabelWidth._ctx || (measureMaxLabelWidth._ctx = document.createElement("canvas").getContext("2d"));
+    ctx.font = `${fontSize}px "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
+    return d3.max(labels, t => ctx.measureText(t).width) || 80;
+}
+function ellipsize(str, maxChars = 18) {
+    if (!str) return "";
+    return str.length > maxChars ? (str.slice(0, maxChars - 1) + "…") : str;
+}
+function computeTimelineMargins(labels) {
+    const maxW = measureMaxLabelWidth(labels, 11);
+    const left = Math.min(280, Math.max(120, Math.ceil(maxW + 18))); // ✅ 自动加大左边 margin
+    return { top: 10, right: 30, bottom: 20, left };
+}
+
+// Load Data
+d3.csv("aiddata-countries-only.csv").then(rawData => {
+    rawData.forEach(d => {
+        d.amount = +d.commitment_amount_usd_constant;
+        d.year = +d.year;
+    });
+
+    const donorTotals = d3.rollups(rawData, v => d3.sum(v, d => d.amount), d => d.donor)
+        .sort((a, b) => b[1] - a[1]).slice(0, CONFIG.topDonors).map(d => d[0]);
+    const recipientTotals = d3.rollups(rawData, v => d3.sum(v, d => d.amount), d => d.recipient)
+        .sort((a, b) => b[1] - a[1]).slice(0, CONFIG.topRecipients).map(d => d[0]);
+
+    let countryFiltered = rawData.filter(d => donorTotals.includes(d.donor) && recipientTotals.includes(d.recipient));
+
+    const purposeTotals = d3.rollups(countryFiltered, v => d3.sum(v, d => d.amount), d => d.coalesced_purpose_name)
+        .sort((a, b) => b[1] - a[1]);
+    const topPurposeNames = purposeTotals.slice(0, CONFIG.topPurposes).map(d => d[0]);
+
+    const finalData = countryFiltered.filter(d => topPurposeNames.includes(d.coalesced_purpose_name));
+    finalData.forEach(d => d.purposeGroup = d.coalesced_purpose_name);
+
+    state.donors = d3.rollups(finalData, v => d3.sum(v, d=>d.amount), d => d.donor).sort((a,b) => b[1] - a[1]).map(d => d[0]);
+    state.recipients = d3.rollups(finalData, v => d3.sum(v, d=>d.amount), d => d.recipient).sort((a,b) => b[1] - a[1]).map(d => d[0]);
+
+    state.data = finalData;
+    state.purposes = topPurposeNames;
+
+    state.purposeScale = d3.scaleOrdinal().domain(topPurposeNames).range(CONFIG.purposeColors);
+
+    const allCountries = Array.from(new Set([...donorTotals, ...recipientTotals]));
+    state.countryScale = d3.scaleOrdinal().domain(allCountries).range(CONFIG.countryColors);
+
+    initLegend();
+    initMainGraph();
+    initDonut();
+    initTimeline();
+
+    updateDashboard(state.data, "Global");
+});
+
+function updateDashboard(subset, title) {
+    state.currentSubset = subset || state.data;
+    updateDonut(state.currentSubset, title);
+    updateTimelineData(); // ✅ timeline 从 state.anchor* / state.currentSubset 推导
+}
+
+// =======================================================
+// ✅ Timeline focus helpers（只影响下面两张图）
+// =======================================================
+function getFocusCountry() {
+    return state.hoverCountry || state.selectedCountry;
+}
+function clearTimelineFocus() {
+    state.hoverCountry = null;
+    state.selectedCountry = null;
+    updateTimelineFocus();
+}
+function updateTimelineFocus() {
+    const focus = getFocusCountry();
+
+    // Area: only show focused series
+    if (state.areaSvg) {
+        state.areaSvg.selectAll(".area-layer")
+            .style("display", d => (focus && d.key !== focus) ? "none" : null);
+    }
+
+    // Strip: hide others (cells + labels)
+    if (state.stripSvg) {
+        state.stripSvg.selectAll(".strip-cell")
+            .style("opacity", d => (focus && d.country !== focus) ? 0 : null);
+
+        state.stripSvg.selectAll(".strip-row text")
+            .style("opacity", d => (focus && d !== focus) ? 0 : null)
+            .style("font-weight", d => (focus && d === focus) ? "700" : null)
+            .style("fill", d => (focus && d === focus) ? "#1f77b4" : null);
+
+        state.stripSvg.selectAll(".row-hit")
+            .style("pointer-events", d => (focus && d !== focus) ? "none" : "all");
+    }
+}
+function selectTimelineSeries(name) {
+    state.selectedCountry = name;
+    state.hoverCountry = null;
+    updateTimelineFocus();
+}
+
+// =========================================================================
+// VIEW 1: MAIN NETWORK
+// =========================================================================
+function initMainGraph() {
+    const container = d3.select("#main-chart");
+    const width = container.node().clientWidth;
+    const height = container.node().clientHeight;
+
+    const svg = container.append("svg").attr("width", width).attr("height", height)
+        .on("click", (e) => { if(e.target.tagName === 'svg') resetGlobalSelection(); });
+
+    const defs = svg.append("defs");
+    const g = svg.append("g");
+
+    const yScaleDonor = d3.scalePoint().domain(state.donors).range([30, height - 30]).padding(1);
+    const yScaleRecipient = d3.scalePoint().domain(state.recipients).range([30, height - 30]).padding(1);
+    const xLeft = 160;
+    const xRight = width - 160;
+
+    let flatPairs = [];
+    const groupedData = d3.groups(state.data, d => d.donor, d => d.recipient);
+    groupedData.forEach(([donor, recipients]) => {
+        recipients.forEach(([recipient, rows]) => {
+            flatPairs.push({ donor, recipient, total: d3.sum(rows, d => d.amount), rows });
+        });
+    });
+    flatPairs.sort((a,b) => a.total - b.total);
+
+    const q1 = Math.floor(flatPairs.length / 3);
+    const q2 = Math.floor(flatPairs.length * 2 / 3);
+    const widthMap = new Map();
+    flatPairs.forEach((p, i) => {
+        let w = 1; if (i >= q1 && i < q2) w = 2; if (i >= q2) w = 4;
+        widthMap.set(`${p.donor}-${p.recipient}`, w);
+    });
+
+    let linkData = flatPairs.map(p => {
+        const breakdown = d3.rollups(p.rows, v => d3.sum(v, d=>d.amount), d => d.purposeGroup).sort((a,b) => b[1] - a[1]);
+        const gradId = `grad-${p.donor.replace(/\W/g,'')}-${p.recipient.replace(/\W/g,'')}`;
+        const linearGrad = defs.append("linearGradient")
+            .attr("id", gradId).attr("gradientUnits", "userSpaceOnUse")
+            .attr("x1", xLeft).attr("y1", yScaleDonor(p.donor))
+            .attr("x2", xRight).attr("y2", yScaleRecipient(p.recipient));
+
+        let offset = 0;
+        breakdown.forEach(item => {
+            const share = item[1] / p.total;
+            const c = state.purposeScale(item[0]);
+            linearGrad.append("stop").attr("offset", offset).attr("stop-color", c);
+            linearGrad.append("stop").attr("offset", offset + share).attr("stop-color", c);
+            offset += share;
+        });
+
+        return {
+            id: `${p.donor}-${p.recipient}`, source: p.donor, target: p.recipient,
+            total: p.total, gradId: gradId, width: widthMap.get(`${p.donor}-${p.recipient}`)
+        };
+    });
+
+    g.selectAll(".link-path").data(linkData).enter().append("path")
+        .attr("class", "link-path")
+        .attr("d", d => `M ${xLeft} ${yScaleDonor(d.source)} L ${xRight} ${yScaleRecipient(d.target)}`)
+        .attr("stroke", d => `url(#${d.gradId})`)
+        .attr("stroke-width", d => d.width)
+        .attr("stroke-opacity", 0.85)
+        .on("click", (e, d) => handleSelection(d.source, d.target, 'link', e))
+        .on("mouseover", (e, d) => showTooltip(e, `<strong>${d.source} → ${d.target}</strong><br>$${formatShort(d.total)}`))
+        .on("mouseout", () => d3.select("#tooltip").style("opacity", 0));
+
+    const drawNodes = (type, xPos, scale) => {
+        const nodeSums = d3.rollups(state.data, v => d3.sum(v, d=>d.amount), d => d[type]);
+        const sizeScale = d3.scaleSqrt().domain([0, d3.max(nodeSums, d=>d[1])]).range([3, 7]);
+        const nodes = g.selectAll(`.node-${type}`).data(type === 'donor' ? state.donors : state.recipients)
+            .enter().append("g").attr("class", `node node-${type}`)
+            .attr("transform", d => `translate(${xPos}, ${scale(d)})`)
+            .on("click", (e, d) => handleSelection(d, null, type, e));
+        nodes.append("circle").attr("r", d => {
+            const f = nodeSums.find(x => x[0] === d); return f ? sizeScale(f[1]) : 0;
+        });
+        nodes.append("text").attr("x", type==='donor'?-15:15).attr("dy", "0.35em")
+            .attr("text-anchor", type==='donor'?"end":"start").text(d => d);
+    };
+
+    drawNodes('donor', xLeft, yScaleDonor);
+    drawNodes('recipient', xRight, yScaleRecipient);
+
+    const lg = g.append("g");
+    lg.append("text").attr("id","lbl-d").attr("class","axis-label").attr("x", xLeft).attr("y", 15).text("DONORS").attr("text-anchor","middle")
+        .on("click", () => switchVis3Mode('donor'));
+    lg.append("text").attr("id","lbl-r").attr("class","axis-label active").attr("x", xRight).attr("y", 15).text("RECIPIENTS").attr("text-anchor","middle")
+        .on("click", () => switchVis3Mode('recipient'));
+}
+
+function switchVis3Mode(mode) {
+    state.vis3Mode = mode;
+    d3.select("#lbl-d").classed("active", mode === 'donor');
+    d3.select("#lbl-r").classed("active", mode === 'recipient');
+    updateTimelineData();
+}
+
+function handleSelection(id1, id2, type, e) {
+    if (e) e.stopPropagation();
+    clearTimelineFocus();
+
+    if (type === 'link') {
+        state.anchorCountry = id1;
+        state.anchorRole = 'donor';
+        state.forcedNeighbor = id2;
+    } else if (type === 'donor' || type === 'recipient') {
+        state.anchorCountry = id1;
+        state.anchorRole = type;
+        state.forcedNeighbor = null;
+    } else {
+        state.anchorCountry = null;
+        state.anchorRole = null;
+        state.forcedNeighbor = null;
+    }
+
+    const svg = d3.select("#main-chart svg");
+    svg.selectAll(".node").classed("hidden", true);
+    svg.selectAll(".link-path").classed("hidden", true);
+
+    let subset;
+    if(type === 'link') {
+        svg.selectAll(".node-donor").filter(d => d === id1).classed("hidden", false);
+        svg.selectAll(".node-recipient").filter(d => d === id2).classed("hidden", false);
+        svg.selectAll(".link-path").filter(d => d.source === id1 && d.target === id2).classed("hidden", false);
+        subset = state.data.filter(d => d.donor === id1 && d.recipient === id2);
+    } else {
+        const mode = type || state.vis3Mode;
+        const myId = id1;
+        const isDonor = mode === 'donor';
+        svg.selectAll(`.node-${mode}`).filter(d => d === myId).classed("hidden", false);
+        const connected = state.data.filter(d => d[mode] === myId);
+        const neighbors = [...new Set(connected.map(d => isDonor ? d.recipient : d.donor))];
+        const otherMode = isDonor ? 'recipient' : 'donor';
+        svg.selectAll(`.node-${otherMode}`).filter(d => neighbors.includes(d)).classed("hidden", false);
+        svg.selectAll(".link-path").filter(d => isDonor ? d.source === myId : d.target === myId).classed("hidden", false);
+        subset = connected;
+    }
+
+    updateDashboard(subset, `Selection`);
+}
+
+function resetGlobalSelection() {
+    state.anchorCountry = null;
+    state.anchorRole = null;
+    state.forcedNeighbor = null;
+    clearTimelineFocus();
+
+    d3.select("#main-chart svg").selectAll(".hidden").classed("hidden", false);
+    updateDashboard(state.data, "Global");
+}
+
+// =========================================================================
+// VIEW 2: DONUT (With %)
+// =========================================================================
+function initDonut() {
+    const w = 300, h = 300, r = 140;
+
+    state.donutSvg = d3.select("#donut-chart")
+        .append("svg")
+        .attr("width", w)
+        .attr("height", h)
+        .append("g")
+        .attr("transform", `translate(${w/2},${h/2})`);
+
+    state.donutArc = d3.arc().innerRadius(r*0.6).outerRadius(r);
+
+    state.donutCenter = state.donutSvg.append("g").attr("class", "donut-center");
+
+    state.donutCenter.append("text")
+        .attr("class", "donut-center-title")
+        .attr("text-anchor", "middle")
+        .attr("dy", "-0.15em")
+        .text("Total");
+
+    state.donutCenter.append("text")
+        .attr("class", "donut-center-value")
+        .attr("text-anchor", "middle")
+        .attr("dy", "1.15em")
+        .text("$0");
+}
+
+function updateDonut(data) {
+    const d = data || state.data;
+    const rolled = d3.rollups(d, v => d3.sum(v, x => x.amount), x => x.purposeGroup)
+        .sort((a,b) => b[1] - a[1]);
+
+    const total = d3.sum(rolled, x => x[1]);
+    const pie = d3.pie().value(x => x[1]).sort(null);
+    const arcs = pie(rolled);
+
+    const paths = state.donutSvg.selectAll("path").data(arcs, x => x.data[0]);
+    paths.enter().append("path")
+        .attr("stroke", "#fff")
+        .attr("stroke-width", 2)
+        .merge(paths)
+        .attr("fill", x => state.purposeScale(x.data[0]))
+        .attr("d", state.donutArc);
+    paths.exit().remove();
+
+    const texts = state.donutSvg.selectAll(".donut-label").data(arcs, x => x.data[0]);
+    texts.enter().append("text")
+        .attr("class", "donut-label")
+        .merge(texts)
+        .attr("transform", x => `translate(${state.donutArc.centroid(x)})`)
+        .attr("text-anchor", "middle")
+        .text(x => (x.data[1]/total > 0.05) ? Math.round(x.data[1]/total*100) + "%" : "");
+    texts.exit().remove();
+
+    state.donutCenter.select(".donut-center-value")
+        .text("$" + formatShort(total));
+}
+
+// =========================================================================
+// VIEW 3: TIMELINE (Anchor-aware)
+// =========================================================================
+function initTimeline() {
+    state.areaDiv = d3.select("#timeline-area-chart");
+    state.stripDiv = d3.select("#timeline-strip-chart");
+
+    state.areaSvg = state.areaDiv.append("svg");
+    state.stripSvg = state.stripDiv.append("svg");
+}
+
+function setStackMode(mode) {
+    state.stackMode = mode;
+    d3.select("#btn-abs").classed("active", mode === 'stack');
+    d3.select("#btn-pct").classed("active", mode === 'expand');
+    renderAreaChart();
+}
+
+function updateTimelineData() {
+    const subset = state.currentSubset || state.data;
+
+    if (state.anchorCountry && state.anchorRole) {
+        const anchorRole = state.anchorRole;
+        const anchorKey = anchorRole;
+        const neighborKey = anchorRole === 'donor' ? 'recipient' : 'donor';
+
+        const roleLabel = anchorRole === 'donor' ? 'Donor' : 'Recipient';
+        const neighLabel = anchorRole === 'donor' ? 'Recipients' : 'Donors';
+        d3.select("#timeline-title").text(`Trend: ${state.anchorCountry} as ${roleLabel} → ${neighLabel}`);
+
+        let neighbors;
+        if (state.forcedNeighbor) {
+            neighbors = [state.forcedNeighbor];
+        } else {
+            neighbors = d3.rollups(
+                subset.filter(r => r[anchorKey] === state.anchorCountry),
+                v => d3.sum(v, r => r.amount),
+                r => r[neighborKey]
+            ).sort((a,b) => b[1] - a[1])
+             .slice(0, CONFIG.timelineMaxSeries)
+             .map(d => d[0]);
+        }
+
+        const allYears = d3.range(1973, 2014);
+        const dataMap = new Map(allYears.map(y => [y, {year: y}]));
+        neighbors.forEach(n => allYears.forEach(y => dataMap.get(y)[n] = 0));
+
+        subset.forEach(r => {
+            if (r[anchorKey] !== state.anchorCountry) return;
+            if (!neighbors.includes(r[neighborKey])) return;
+            if (!dataMap.has(r.year)) return;
+            dataMap.get(r.year)[r[neighborKey]] += r.amount;
+        });
+
+        state.vis3Data = Array.from(dataMap.values());
+        state.vis3Entities = neighbors;
+        state.vis3GroupKey = neighborKey;
+
+        state.countryScale = d3.scaleOrdinal().domain(neighbors).range(CONFIG.countryColors);
+
+        // ✅ set shared margins (fix overlap + align years)
+        state.timelineMargins = computeTimelineMargins(state.vis3Entities);
+
+        renderAreaChart();
+        renderStripPlot();
+        updateTimelineFocus();
+        return;
+    }
+
+    const groupKey = state.vis3Mode === 'donor' ? 'donor' : 'recipient';
+    d3.select("#timeline-title").text(`Trend Analysis: ${groupKey === 'donor' ? 'Donors' : 'Recipients'}`);
+
+    const topEntities = d3.rollups(state.data, v => d3.sum(v, d => d.amount), d => d[groupKey])
+        .sort((a,b) => b[1] - a[1]).slice(0, 35).map(d => d[0]);
+
+    const allYears = d3.range(1973, 2014);
+    const dataMap = new Map(allYears.map(y => [y, {year: y}]));
+    topEntities.forEach(e => allYears.forEach(y => dataMap.get(y)[e] = 0));
+
+    state.data.forEach(d => {
+        if(dataMap.has(d.year) && topEntities.includes(d[groupKey])) {
+            dataMap.get(d.year)[d[groupKey]] += d.amount;
+        }
+    });
+
+    state.vis3Data = Array.from(dataMap.values());
+    state.vis3Entities = topEntities;
+    state.vis3GroupKey = groupKey;
+
+    state.countryScale = d3.scaleOrdinal().domain(topEntities).range(CONFIG.countryColors);
+
+    // ✅ set shared margins (fix overlap + align years)
+    state.timelineMargins = computeTimelineMargins(state.vis3Entities);
+
+    renderAreaChart();
+    renderStripPlot();
+    updateTimelineFocus();
+}
+
+function renderAreaChart() {
+    const { vis3Data, vis3Entities } = state;
+    if (!vis3Data || !vis3Entities) return;
+
+    const w = state.areaDiv.node().clientWidth;
+    const h = state.areaDiv.node().clientHeight;
+    state.areaSvg.attr("width", w).attr("height", h);
+
+    const svg = state.areaSvg;
+    svg.selectAll("*").remove();
+
+    const margin = state.timelineMargins || { top: 10, right: 30, bottom: 20, left: 120 };
+    const innerW = w - margin.left - margin.right;
+    const innerH = h - margin.top - margin.bottom;
+    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+    g.append("rect")
+        .attr("x", 0).attr("y", 0)
+        .attr("width", innerW).attr("height", innerH)
+        .attr("fill", "transparent")
+        .on("click", (e) => {
+            e.stopPropagation();
+            clearTimelineFocus();
+        });
+
+    const domain = state.brushSelection || [1973, 2013];
+    const x = d3.scaleLinear().domain(domain).range([0, innerW]);
+
+    const visibleData = vis3Data.filter(d => d.year >= domain[0] && d.year <= domain[1]);
+
+    svg.append("defs").append("clipPath").attr("id", "clip")
+        .append("rect").attr("width", innerW).attr("height", innerH);
+
+    if (state.stackMode === "stack") {
+        const overlapSeries = vis3Entities.map(key => ({
+            key,
+            values: visibleData.map(d => ({ year: d.year, value: d[key] || 0 }))
+        }));
+
+        const yMaxAbs = d3.max(overlapSeries, s => d3.max(s.values, v => v.value)) || 100;
+        const yAbs = d3.scaleLinear().domain([0, yMaxAbs]).nice().range([innerH, 0]);
+
+        const areaAbs = d3.area()
+            .x(d => x(d.year))
+            .y0(yAbs(0))
+            .y1(d => yAbs(d.value));
+
+        const paths = g.append("g")
+            .attr("clip-path", "url(#clip)")
+            .selectAll(".area-layer")
+            .data(overlapSeries, d => d.key)
+            .enter()
+            .append("path")
+            .attr("class", "area-layer")
+            .attr("d", d => areaAbs(d.values))
+            .attr("fill", d => state.countryScale(d.key))
+            .on("mouseover", (e, d) => {
+                state.hoverCountry = d.key;
+                updateTimelineFocus();
+            })
+            .on("mouseout", () => {
+                state.hoverCountry = null;
+                updateTimelineFocus();
+            })
+            .on("click", (e, d) => {
+                e.stopPropagation();
+                selectTimelineSeries(d.key);
+            });
+
+        paths.append("title").text(d => d.key);
+
+        g.append("g")
+            .attr("transform", `translate(0,${innerH})`)
+            .call(d3.axisBottom(x).tickFormat(d3.format("d")));
+
+        g.append("g")
+            .call(d3.axisLeft(yAbs).ticks(5).tickFormat(d3.format(".2s")));
+
+        updateTimelineFocus();
+        return;
+    }
+
+    const stack = d3.stack().keys(vis3Entities).offset(d3.stackOffsetExpand);
+    const series = stack(visibleData);
+
+    const y = d3.scaleLinear().domain([0, 1]).range([innerH, 0]);
+
+    const area = d3.area()
+        .x(d => x(d.data.year))
+        .y0(d => y(d[0]))
+        .y1(d => y(d[1]));
+
+    const paths = g.append("g")
+        .attr("clip-path", "url(#clip)")
+        .selectAll(".area-layer")
+        .data(series, d => d.key)
+        .enter()
+        .append("path")
+        .attr("class", "area-layer")
+        .attr("d", area)
+        .attr("fill", d => state.countryScale(d.key))
+        .on("mouseover", (e, d) => {
+            state.hoverCountry = d.key;
+            updateTimelineFocus();
+        })
+        .on("mouseout", () => {
+            state.hoverCountry = null;
+            updateTimelineFocus();
+        })
+        .on("click", (e, d) => {
+            e.stopPropagation();
+            selectTimelineSeries(d.key);
+        });
+
+    paths.append("title").text(d => d.key);
+
+    g.append("g")
+        .attr("transform", `translate(0,${innerH})`)
+        .call(d3.axisBottom(x).tickFormat(d3.format("d")));
+
+    g.append("g")
+        .call(d3.axisLeft(y).ticks(5).tickFormat(d3.format(".0%")));
+
+    updateTimelineFocus();
+}
+
+function renderStripPlot() {
+    const { vis3Data, vis3Entities } = state;
+    if (!vis3Data || !vis3Entities) return;
+
+    const containerW = state.stripDiv.node().clientWidth;
+    const containerH = state.stripDiv.node().clientHeight;
+
+    const svg = state.stripSvg;
+    svg.selectAll("*").remove();
+
+    svg.on("click", (e) => {
+        if (e.target === svg.node()) clearTimelineFocus();
+    });
+
+    const m = state.timelineMargins || { top: 10, right: 30, bottom: 25, left: 120 };
+    const margin = { top: 5, right: m.right, bottom: 25, left: m.left };
+
+    const innerW = containerW - margin.left - margin.right;
+
+    // ✅ 固定行高 + SVG 变高，让容器滚动（解决“20个国家挤一起看不见”）
+    const rowMin = 14;
+    const innerH = Math.max(containerH - margin.top - margin.bottom, vis3Entities.length * (rowMin + 2));
+    const svgH = innerH + margin.top + margin.bottom;
+    svg.attr("width", containerW).attr("height", svgH);
+
+    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+    const years = d3.range(1973, 2014);
+    const xBand = d3.scaleBand().domain(years).range([0, innerW]).paddingInner(0);
+    const xLinear = d3.scaleLinear().domain([1973, 2013]).range([0, innerW]); // axis + brush invert
+
+    const y = d3.scaleBand().domain(vis3Entities).range([0, innerH]).padding(0.12);
+    const rowH = y.bandwidth();
+    const yearW = xBand.bandwidth();
+
+    const cells = [];
+    vis3Data.forEach(d => {
+        vis3Entities.forEach(c => {
+            if(d[c] > 0) cells.push({ year: d.year, country: c, val: d[c] });
+        });
+    });
+
+    const maxVal = d3.max(cells, d => d.val) || 1;
+    const opacityScale = d3.scaleLog().domain([100, maxVal]).range([0.2, 1]);
+
+    g.selectAll(".strip-cell").data(cells).enter().append("rect")
+        .attr("class", "strip-cell")
+        .attr("x", d => xBand(d.year))
+        .attr("y", d => y(d.country))
+        .attr("width", yearW).attr("height", rowH)
+        .attr("fill", d => state.countryScale(d.country))
+        .attr("opacity", d => {
+            const base = opacityScale(d.val);
+            const focus = getFocusCountry();
+            if (focus) return d.country === focus ? base : 0;
+            return base;
+        })
+        .on("mouseover", (e, d) => {
+            state.hoverCountry = d.country;
+            updateTimelineFocus();
+        })
+        .on("mouseout", () => {
+            state.hoverCountry = null;
+            updateTimelineFocus();
+        })
+        .on("click", (e, d) => {
+            e.stopPropagation();
+            selectTimelineSeries(d.country);
+        });
+
+    // ✅ y 轴国家名：根据 margin.left 自适应省略 + hover显示全名
+    const maxChars = margin.left >= 240 ? 28 : (margin.left >= 180 ? 20 : 14);
+    const yAxis = d3.axisLeft(y)
+        .tickSize(0)
+        .tickPadding(6)
+        .tickFormat(d => ellipsize(d, maxChars));
+
+    const yG = g.append("g").attr("class", "strip-row").call(yAxis);
+
+    yG.selectAll("text")
+        .style("font-size", `${Math.min(11, Math.max(9, rowH))}px`)
+        .each(function(d){
+            d3.select(this).append("title").text(d);
+        })
+        .on("mouseover", (e, d) => {
+            state.hoverCountry = d;
+            updateTimelineFocus();
+        })
+        .on("mouseout", () => {
+            state.hoverCountry = null;
+            updateTimelineFocus();
+        })
+        .on("click", (e, d) => {
+            e.stopPropagation();
+            selectTimelineSeries(d);
+        });
+
+    g.append("g").attr("transform", `translate(0,${innerH})`)
+        .call(d3.axisBottom(xLinear).tickFormat(d3.format("d")));
+
+    g.selectAll(".row-hit").data(vis3Entities).enter().append("rect")
+        .attr("class", "row-hit")
+        .attr("x", -margin.left).attr("y", d => y(d))
+        .attr("width", margin.left + innerW).attr("height", rowH)
+        .on("mouseover", (e, d) => {
+            state.hoverCountry = d;
+            updateTimelineFocus();
+        })
+        .on("mouseout", () => {
+            state.hoverCountry = null;
+            updateTimelineFocus();
+        })
+        .on("click", (e, d) => {
+            e.stopPropagation();
+            selectTimelineSeries(d);
+        });
+
+    const brush = d3.brushX()
+        .extent([[0, 0], [innerW, innerH]])
+        .on("brush end", (event) => {
+            if (!event.selection) state.brushSelection = null;
+            else state.brushSelection = [xLinear.invert(event.selection[0]), xLinear.invert(event.selection[1])];
+            renderAreaChart();
+        });
+    g.append("g").attr("class", "brush").call(brush);
+
+    updateTimelineFocus();
+}
+
+// =========================================================================
+// Legend & Utils
+// =========================================================================
+function initLegend() {
+    const leg = d3.select("#purpose-legend");
+    state.purposes.forEach(p => {
+        const item = leg.append("div").attr("class", "legend-item");
+        item.append("div").attr("class", "legend-color").style("background", state.purposeScale(p));
+        item.append("span").text(p);
+    });
+}
+const formatShort = d3.format(".2s");
+function showTooltip(e, html) {
+    d3.select("#tooltip")
+        .style("opacity",1)
+        .html(html)
+        .style("left",(e.pageX+10)+"px")
+        .style("top",(e.pageY-10)+"px");
+}
+</script>
+</body>
+</html>
