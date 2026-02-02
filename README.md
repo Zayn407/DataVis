@@ -62,19 +62,15 @@ The project features a **single unified dashboard** (`index.html`) combining fou
 
 ```
 DataVis-final/
-├── index.html                       # 🎯 Main dashboard (entry point)
+├── index.html                       # 🎯 Main dashboard (unified entry point)
 ├── aid-flow-visualization.js        # Network visualization module
 ├── aid-purpose-breakdown.js         # Purpose breakdown module
 ├── aid-timeline-explorer.js         # Timeline explorer module
 ├── aiddata-countries-only.csv       # Dataset (8.4 MB)
-├── README.md                        # Project documentation
-├── QUICK_START.md                   # Getting started guide
-├── REFACTORING_NOTES.md             # Code style improvements
-├── REFACTORING_REPORT.md            # Detailed analysis
-└── REFACTORING_COMPLETE.md          # Completion summary
+└── README.md                        # Project documentation
 ```
 
-**Single Entry Point**: Only `index.html` - opens the unified dashboard with all four visualizations integrated.
+**Single Entry Point**: Only `index.html` - opens the unified dashboard with all four visualizations (network flow, purpose breakdown, timeline explorer, and combined dashboard) fully integrated into one cohesive interface.
 
 ---
 
@@ -232,25 +228,17 @@ CSS is embedded in each HTML file within `<style>` tags. Customize colors, fonts
 
 ---
 
-## 📚 Code Quality & Refactoring
+## 📚 Code Quality & Standards
 
-### Recent Improvements (Feb 2026)
-- ✅ Descriptive file naming (e.g., `aid-flow-visualization.js`)
-- ✅ All comments translated to English (Google style guide)
-- ✅ Consistent code formatting (2-space indentation, camelCase, UPPER_CASE constants)
-- ✅ JSDoc documentation for all major functions
-- ✅ Professional variable naming for team collaboration
-
-See `REFACTORING_NOTES.md`, `REFACTORING_REPORT.md`, and `QUICK_START.md` for details.
-
----
-
-## 📖 Documentation
-
-- **QUICK_START.md** — Getting started in 5 minutes
-- **REFACTORING_NOTES.md** — Summary of code improvements
-- **REFACTORING_REPORT.md** — Detailed analysis and validation
-- **REFACTORING_COMPLETE.md** — Completion checklist
+### Code Standards (Feb 2026)
+- ✅ **Google JavaScript Style Guide** compliance throughout
+- ✅ **2-space indentation** (consistent across all files)
+- ✅ **camelCase** for variables and functions
+- ✅ **UPPER_CASE** for constants
+- ✅ **English comments** for clarity and team collaboration
+- ✅ **Descriptive file naming** (e.g., `aid-flow-visualization.js`)
+- ✅ **Single unified entry point** (`index.html`)
+- ✅ **Professional code organization** ready for production
 
 ---
 
