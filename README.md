@@ -4,75 +4,46 @@ A comprehensive D3.js-based interactive data visualization platform analyzing gl
 
 ---
 
-## 📊 Visualizations
+## 📊 Dashboard Overview
 
-The project consists of four complementary views, each revealing different dimensions of the data:
+The project features a **single unified dashboard** (`index.html`) combining four complementary views into one cohesive interface:
 
-### 1. Aid Flow Network (Visualization 1)
-**Files**: `vis1.html`, `aid-flow-visualization.js`
+### Main Components (All in index.html)
 
-**Overview**: Sankey-style network diagram showing aggregate flows from top 20 donors to top 10 recipients.
+**1. Aid Flow Network**
+- **Purpose**: Sankey-style network showing flows from top 20 donors to top 10 recipients
+- **Features**:
+  - Left/right ranked lists of donors and recipients
+  - Link width and color gradient encode total commitment amounts
+  - Interactive click filtering to highlight connections
+  - Detail bar chart for top partnerships
+  - Hover tooltips with transaction details
 
-**Key Features**:
-- **Network View**: Left side displays ranked donors, right side shows ranked recipients
-- **Link Encoding**: Line width and color gradient represent total commitment amounts (USD, constant)
-- **Interactive Filtering**: Click any country node to highlight its connections
-- **Detail Breakdown**: Bottom chart shows top partnerships with bar chart detail
-- **Smooth Interactions**: Hover for tooltips, click to focus, click again to reset
+**2. Aid Purpose Breakdown**
+- **Purpose**: Purpose-centric analysis across five major aid categories
+- **Features**:
+  - Gradient-colored links showing purpose composition
+  - Dual pie charts: pair-level and country-level analysis
+  - Interactive selection to explore purpose distributions
+  - Purpose legend identifying education, health, infrastructure, etc.
+  - Dropdown menus for quick country pair selection
 
-**Data Aggregation**: All years combined by donor-recipient pair; ordered by total amount
+**3. Timeline Explorer**
+- **Purpose**: Time-series analysis of aid flows (1973–2013)
+- **Features**:
+  - Stacked or 100% area chart showing flows over time
+  - Brush selection to zoom into specific time ranges
+  - Heatmap strip chart (years × countries) for activity visualization
+  - Pie chart showing composition at selected year
+  - Toggle between Donor/Recipient perspective
+  - Year-locking to persist selections while exploring
+  - Ranked side panel with top 20 donors or 10 recipients
 
----
-
-### 2. Aid Purpose Breakdown (Visualization 2)
-**Files**: `vis2.html`, `aid-purpose-breakdown.js`
-
-**Overview**: Purpose-centric analysis revealing how aid funds are allocated across five major categories.
-
-**Key Features**:
-- **Gradient Links**: Each link colored with gradient representing purpose breakdown
-- **Dual Pie Charts**: 
-  - Pair-level pie: Purpose distribution for specific donor-recipient relationship
-  - Country-level pie: Overall purpose allocation for selected country (donor or recipient mode)
-- **Purpose Legend**: Identifies education, health, infrastructure, and other categories
-- **Interactive Selection**: Click edges or nodes to populate corresponding pie charts
-- **Dropdown Controls**: Quick selection of country pairs and view mode
-
-**Purpose Categories**: Top 5 globally (e.g., Education, Health, Infrastructure, etc.)
-
----
-
-### 3. Timeline Explorer (Visualization 3)
-**Files**: `vis3.html`, `vis3-1.html`, `aid-timeline-explorer.js`
-
-**Overview**: Interactive time-series analysis of aid flows from 1973 to 2013 with multiple linked views.
-
-**Key Features**:
-- **Main Area Chart**: Stacked or 100% area view of flows over time
-- **Brush Selection**: Zoom into specific time ranges on the strip chart
-- **Strip Chart Heatmap**: Years × countries grid with color intensity showing activity
-- **Pie Chart**: Composition breakdown at selected (or locked) year
-- **View Modes**: 
-  - Switch between Donor/Recipient perspective
-  - Toggle between Absolute and 100% (normalized) scales
-- **Year Locking**: Click axis labels to lock a year; view persists while exploring
-- **Side Panel**: Browse ranked list of top 20 donors or 10 recipients with quick selection
-
-**Time Span**: 41 years (1973–2013) of granular data
-
----
-
-### 4. Combined Dashboard (Unified View)
-**File**: `index.html`
-
-**Overview**: Integrated dashboard combining network, purpose, and timeline views in a single page.
-
-**Layout**:
+**4. Unified Dashboard Layout**
 - **Top Left**: Purpose breakdown donut chart
 - **Top Right**: Main aid flow network
 - **Bottom**: Timeline with area chart and strip chart
-
-**Benefits**: See correlations between network structure, purpose allocation, and temporal trends without switching tabs.
+- **Benefit**: Explore all dimensions simultaneously and see correlations between network structure, purpose allocation, and temporal trends
 
 ---
 
@@ -91,14 +62,10 @@ The project consists of four complementary views, each revealing different dimen
 
 ```
 DataVis-final/
-├── aid-flow-visualization.js        # Visualization 1 (refactored)
-├── aid-purpose-breakdown.js         # Visualization 2 (refactored)
-├── aid-timeline-explorer.js         # Visualization 3 (refactored)
-├── vis1.html                        # Entry: Flow network view
-├── vis2.html                        # Entry: Purpose breakdown view
-├── vis3.html                        # Entry: Timeline explorer (main)
-├── vis3-1.html                      # Alternative timeline layout
-├── index.html                       # Combined dashboard
+├── index.html                       # 🎯 Main dashboard (entry point)
+├── aid-flow-visualization.js        # Network visualization module
+├── aid-purpose-breakdown.js         # Purpose breakdown module
+├── aid-timeline-explorer.js         # Timeline explorer module
 ├── aiddata-countries-only.csv       # Dataset (8.4 MB)
 ├── README.md                        # Project documentation
 ├── QUICK_START.md                   # Getting started guide
@@ -107,10 +74,7 @@ DataVis-final/
 └── REFACTORING_COMPLETE.md          # Completion summary
 ```
 
-### Legacy Files (for reference, can be deleted)
-```
-vis1.js, vis2.js, vis3.js, vis3-1.js  # Original files before refactoring
-```
+**Single Entry Point**: Only `index.html` - opens the unified dashboard with all four visualizations integrated.
 
 ---
 
@@ -142,30 +106,29 @@ npx http-server
 2. Right-click `index.html` or `vis1.html`
 3. Select "Open with Live Server"
 
-### Accessing the Visualizations
-- **Combined Dashboard**: `http://localhost:8000/index.html`
-- **Visualization 1**: `http://localhost:8000/vis1.html`
-- **Visualization 2**: `http://localhost:8000/vis2.html`
-- **Visualization 3**: `http://localhost:8000/vis3.html`
-- **Timeline Alt**: `http://localhost:8000/vis3-1.html`
+### Accessing the Dashboard
+- **Unified Dashboard**: `http://localhost:8000/index.html`
+- **Direct URL** (automatic): `http://localhost:8000/` (automatically loads index.html)
 
 ---
 
-## 💡 Usage Guide
+## 💡 Dashboard Interaction Guide
 
-### Visualization 1: Network Flow
+All features are available in the single `index.html` dashboard:
+
+### Network View (Top Right)
 1. **Explore**: Hover over links and nodes to see tooltip details
 2. **Focus**: Click any country node to highlight its partnerships
 3. **Reset**: Click blank area or the same node again to reset
 4. **Details**: Use the bar chart below to see top partners
 
-### Visualization 2: Purpose Breakdown
-1. **Select Pair**: Use dropdown menus or click on a network link
-2. **View Pie**: Left pie shows purpose composition for that donor-recipient pair
-3. **Country Mode**: Click a country node or select from "Country Select" dropdown
+### Purpose Breakdown (Top Left)
+1. **Select Pair**: Click on a network link (top right)
+2. **View Pie**: Pie chart shows purpose composition for that donor-recipient pair
+3. **Country Mode**: Click a country node or use dropdown to select
 4. **Toggle View**: Switch between Donor and Recipient perspective
 
-### Visualization 3: Timeline
+### Timeline (Bottom)
 1. **Browse**: Hover over the strip chart to see values at each year
 2. **Zoom**: Drag on the strip chart to brush-select a time range; main chart zooms
 3. **Lock Year**: Click axis label to lock a year; pie updates but you can still browse
