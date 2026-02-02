@@ -5,13 +5,13 @@
     <title>AidData Dashboard - Compact Final</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
-        /* === Global Layout (One Screen) === */
+        /* === 全局布局（单屏显示） === */
         body {
             font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             margin: 0; padding: 0;
             background-color: #f8f9fa;
             height: 100vh;
-            overflow: hidden; /* No scrolling */
+            overflow: hidden; /* 无滚动 */
             display: flex; flex-direction: column;
         }
 
@@ -33,7 +33,7 @@
             overflow: hidden;
         }
 
-        /* === Panels === */
+        /* === 面板 === */
         .panel {
             background: #fff; border: 1px solid #e1e4e8; border-radius: 6px;
             display: flex; flex-direction: column; box-shadow: 0 2px 4px rgba(0,0,0,0.02); position: relative;
@@ -52,21 +52,21 @@
 
         .chart-area { flex: 1; position: relative; overflow: hidden; }
 
-        /* === Controls === */
+        /* === 控制按钮 === */
         .controls { display: flex; gap: 5px; align-items: center; }
         .controls button {
             border: 1px solid #ccc; background: #fff; cursor: pointer; padding: 2px 8px; font-size: 11px; border-radius: 3px;
         }
         .controls button.active { background: #4e79a7; color: #fff; border-color: #4e79a7; }
 
-        /* === Tooltip === */
+        /* === 提示框 === */
         #tooltip {
             position: absolute; padding: 8px 12px; background: rgba(30, 30, 30, 0.9); color: #fff;
             border-radius: 4px; pointer-events: none; font-size: 12px; opacity: 0; z-index: 2000;
             box-shadow: 0 4px 12px rgba(0,0,0,0.2); max-width: 280px; line-height: 1.4; border: 1px solid #555;
         }
 
-        /* === Styles === */
+        /* === 样式 === */
         .link-path { fill: none; stroke-linecap: butt; cursor: pointer; transition: opacity 0.3s; }
         .node circle { fill: #fff; stroke: #555; stroke-width: 1px; cursor: pointer; transition: all 0.2s; }
         .axis-label { font-size: 12px; font-weight: bold; fill: #888; cursor: pointer; transition: fill 0.2s; }
@@ -153,7 +153,7 @@
             </div>
         </div>
 
-        <!-- ✅ 改这里：折线图稍矮一点点，方框图高一点点 -->
+        <!-- ✅ Adjust here: area chart slightly shorter, heatmap slightly taller -->
         <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
             <div id="timeline-area-chart" style="flex: 2.3; border-bottom: 1px solid #eee; overflow: hidden;"></div>
             <div id="timeline-strip-chart" style="flex: 2.7;"></div>
@@ -165,7 +165,7 @@
 <div id="tooltip"></div>
 
 <script>
-// === Configuration ===
+// === 配置 ===
 const CONFIG = {
     topDonors: 20, topRecipients: 10, topPurposes: 5,
     purposeColors: ["#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3", "#a6d854"],
@@ -174,32 +174,32 @@ const CONFIG = {
     timelineMaxSeries: 18
 };
 
-// === Global State ===
+// === 全局状态 ===
 let state = {
     data: [],
     donors: [], recipients: [], purposes: [],
     purposeScale: null, countryScale: null,
 
-    // timeline global mode（无主图选中时用）
-    vis3Mode: 'recipient', // donor vs recipient
+    // 时间线全局模式（主图表无选择时使用）
+    vis3Mode: 'recipient', // 捐赠者 vs 受援者
     stackMode: 'stack',
     brushSelection: null,
 
-    // ✅ main selection anchor 逻辑（你这次要的核心）
-    anchorCountry: null,      // 例如 "United States"
+    // ✅ 主选择锚点逻辑（核心要求）
+    anchorCountry: null,      // 例："United States"
     anchorRole: null,         // "donor" 或 "recipient"
-    forcedNeighbor: null,     // 仅 link 选择时用（只显示那一个 partner）
-    currentSubset: null,      // 当前 dashboard 的数据子集（跟主图选择一致）
+    forcedNeighbor: null,     // 仅在链接被选中时使用（仅显示该伙伴）
+    currentSubset: null,      // 当前仪表板数据子集（与主图表选择对齐）
 
-    // ✅ timeline 内部 focus（只影响下面两张图，不再影响主图）
+    // ✅ 时间线内部焦点（仅影响下面两个图表，不影响主图表）
     selectedCountry: null,  // 这里改为代表“选中的 series”（某个 neighbor）
-    hoverCountry: null,     // hover 的 series
+    hoverCountry: null,     // 悬停的series
 
-    // ✅ 自动 margin（解决国家名压色块 + 年份对齐）
+    // ✅ 自动边距（修复国家名称与颜色重叠 + 年份对齐）
     timelineMargins: null
 };
 
-// ======= ✅ Timeline layout helpers (NEW) =======
+// ======= ✅ 时间线布局辅助函数（新） =======
 function measureMaxLabelWidth(labels, fontSize = 11) {
     const ctx = measureMaxLabelWidth._ctx || (measureMaxLabelWidth._ctx = document.createElement("canvas").getContext("2d"));
     ctx.font = `${fontSize}px "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
@@ -211,11 +211,11 @@ function ellipsize(str, maxChars = 18) {
 }
 function computeTimelineMargins(labels) {
     const maxW = measureMaxLabelWidth(labels, 11);
-    const left = Math.min(280, Math.max(120, Math.ceil(maxW + 18))); // ✅ 自动加大左边 margin
+    const left = Math.min(280, Math.max(120, Math.ceil(maxW + 18))); // ✅ Auto-increase left margin
     return { top: 10, right: 30, bottom: 20, left };
 }
 
-// Load Data
+// 加载数据
 d3.csv("aiddata-countries-only.csv").then(rawData => {
     rawData.forEach(d => {
         d.amount = +d.commitment_amount_usd_constant;
@@ -258,11 +258,11 @@ d3.csv("aiddata-countries-only.csv").then(rawData => {
 function updateDashboard(subset, title) {
     state.currentSubset = subset || state.data;
     updateDonut(state.currentSubset, title);
-    updateTimelineData(); // ✅ timeline 从 state.anchor* / state.currentSubset 推导
+    updateTimelineData(); // ✅ 时间线由state.anchor* / state.currentSubset派生
 }
 
 // =======================================================
-// ✅ Timeline focus helpers（只影响下面两张图）
+// ✅ 时间线焦点辅助函数（仅影响下面两个图表）
 // =======================================================
 function getFocusCountry() {
     return state.hoverCountry || state.selectedCountry;
@@ -275,13 +275,13 @@ function clearTimelineFocus() {
 function updateTimelineFocus() {
     const focus = getFocusCountry();
 
-    // Area: only show focused series
+    // 面积图：仅显示焦点series
     if (state.areaSvg) {
         state.areaSvg.selectAll(".area-layer")
             .style("display", d => (focus && d.key !== focus) ? "none" : null);
     }
 
-    // Strip: hide others (cells + labels)
+    // 条带图：隐藏其他（单元格 + 标签）
     if (state.stripSvg) {
         state.stripSvg.selectAll(".strip-cell")
             .style("opacity", d => (focus && d.country !== focus) ? 0 : null);
@@ -302,7 +302,7 @@ function selectTimelineSeries(name) {
 }
 
 // =========================================================================
-// VIEW 1: MAIN NETWORK
+// 视图1：主网络
 // =========================================================================
 function initMainGraph() {
     const container = d3.select("#main-chart");
@@ -456,7 +456,7 @@ function resetGlobalSelection() {
 }
 
 // =========================================================================
-// VIEW 2: DONUT (With %)
+// 视图2：甜甜圈（带%）
 // =========================================================================
 function initDonut() {
     const w = 300, h = 300, r = 140;
@@ -517,7 +517,7 @@ function updateDonut(data) {
 }
 
 // =========================================================================
-// VIEW 3: TIMELINE (Anchor-aware)
+// 视图3：时间线（锚点感知）
 // =========================================================================
 function initTimeline() {
     state.areaDiv = d3.select("#timeline-area-chart");
@@ -576,7 +576,7 @@ function updateTimelineData() {
 
         state.countryScale = d3.scaleOrdinal().domain(neighbors).range(CONFIG.countryColors);
 
-        // ✅ set shared margins (fix overlap + align years)
+        // ✅ 设置共享边距（修复重叠 + 对齐年份）
         state.timelineMargins = computeTimelineMargins(state.vis3Entities);
 
         renderAreaChart();
@@ -607,7 +607,7 @@ function updateTimelineData() {
 
     state.countryScale = d3.scaleOrdinal().domain(topEntities).range(CONFIG.countryColors);
 
-    // ✅ set shared margins (fix overlap + align years)
+    // ✅ 设置共享边距（修复重叠 + 对齐年份）
     state.timelineMargins = computeTimelineMargins(state.vis3Entities);
 
     renderAreaChart();
@@ -811,7 +811,7 @@ function renderStripPlot() {
             selectTimelineSeries(d.country);
         });
 
-    // ✅ y 轴国家名：根据 margin.left 自适应省略 + hover显示全名
+    // ✅ Y轴国家名称：基于margin.left的自适应省略号 + 悬停显示全名
     const maxChars = margin.left >= 240 ? 28 : (margin.left >= 180 ? 20 : 14);
     const yAxis = d3.axisLeft(y)
         .tickSize(0)
@@ -871,7 +871,7 @@ function renderStripPlot() {
 }
 
 // =========================================================================
-// Legend & Utils
+// 图例与工具函数
 // =========================================================================
 function initLegend() {
     const leg = d3.select("#purpose-legend");
